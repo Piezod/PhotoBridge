@@ -18,6 +18,14 @@ Python 3.12, FastAPI, Uvicorn, HTTPX, Playwright Python, SQLAlchemy 2, SQLite, A
 ## Reglas de trabajo
 Implementar únicamente la fase solicitada. Antes de editar, revisar el repositorio y PROGRESS.md, proponer cambios y criterios de aceptación. Mantener tipado, funciones pequeñas, inyección de dependencias, errores explícitos, logs estructurados sin secretos y pruebas reproducibles. Usar async para HTTP y Playwright; no bloquear el event loop con operaciones de disco o hash. No añadir dependencias sin justificar. Ejecutar pruebas y Ruff al terminar; informar comandos y resultados reales. Actualizar PROGRESS.md con decisiones, pendientes, pruebas y siguiente fase. Registrar decisiones relevantes en ADR. No inventar endpoints ni resultados de pruebas reales.
 
+## Seguimiento documental obligatorio
+En cada ejecución, antes de modificar código, consultar íntegramente estas instrucciones, `README.md`, `docs/ROADMAP.md`, `docs/PROGRESS.md`, `docs/ARCHITECTURE.md` y los ADR relacionados con la tarea. Si `docs/ROADMAP.md` o `docs/PROGRESS.md` no existe, crearlo sin inventar historial. Mantener el progreso previo y añadir un registro fechado/identificado por tarea; actualizar también el estado vigente del roadmap.
+
+El roadmap debe agrupar criterios verificables por fases y distinguir explícitamente `Pendiente`, `Implementado`, `Testado automáticamente`, `Validado manualmente` y `Bloqueado`. Solo marcar validación manual cuando exista evidencia confirmada por una persona; los mocks y comprobaciones locales no equivalen a integración real. Registrar comandos y resultados realmente ejecutados.
+
+## Evolución de arquitectura
+Mantener los servicios de conexión, exploración, descarga y subida independientes de la interfaz y utilizables mediante contratos de aplicación. La estrategia futura es **TOOLS FIRST, AI SECOND**: las herramientas y reglas de negocio deben ser correctas, seguras y verificables antes de integrarlas con Copilot SDK o skills. No implementar IA, LLM ni skills sin autorización expresa para su fase.
+
 ## Seguridad
 Escuchar solo en 127.0.0.1 por defecto. Validar origen de solicitudes y proteger operaciones mutables contra CSRF. Credenciales Synology mediante keyring de Windows; nunca en SQLite, .env, Git o logs. En otros sistemas exigir almacén seguro compatible o entrada manual. Amazon: inicio manual en navegador visible y perfil persistente separado por cuenta, protegido mediante permisos locales. No almacenar contraseñas Amazon ni automatizar CAPTCHA/MFA. No desactivar TLS; aceptar CA de confianza configurada cuando proceda. Validar URL y limitar redirecciones para no reenviar secretos a terceros. Redactar tokens y cookies. Evitar traversal de rutas y nombres peligrosos. No exponer la aplicación a Internet. Usar cuentas con permisos mínimos de lectura en Synology.
 

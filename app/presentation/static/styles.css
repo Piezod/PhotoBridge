@@ -212,3 +212,102 @@ h1 { margin: 10px 0 8px; color: #18324c; font-size: clamp(26px, 3vw, 34px); lett
   .feature-grid { grid-template-columns: 1fr; gap: 9px; }
   .feature-card { min-height: 0; }
 }
+
+.panel-card, .diagnostic-card {
+  margin-top: 20px;
+  padding: 21px;
+  border: 1px solid #e4ebf1;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 20px rgba(34, 69, 97, .035);
+}
+
+.panel-card h2, .diagnostic-card h2 {
+  margin: 0 0 6px;
+  color: #243b52;
+  font-size: 17px;
+}
+
+.muted, .field-help { color: #7d8b9b; font-size: 12px; }
+.field-help { display: block; margin-top: 5px; font-size: 10px; }
+.security-note { margin-top: 20px; padding: 14px 16px; border-left: 3px solid #26a994; border-radius: 7px; background: #edf8f5; color: #536d70; font-size: 12px; line-height: 1.65; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.form-grid label, .explorer-controls label { display: grid; gap: 6px; color: #45596e; font-size: 12px; font-weight: 600; }
+.form-control, .form-select { border-color: #dce5ed; font-size: 13px; }
+.remember-option { grid-template-columns: auto 1fr !important; align-items: center; justify-content: start; font-weight: 500 !important; }
+.remember-option input, .confirm-check input { accent-color: #189d91; }
+.btn-primary { --bs-btn-bg: #2778bd; --bs-btn-border-color: #2778bd; --bs-btn-hover-bg: #1d679f; --bs-btn-hover-border-color: #1d679f; }
+.connection-list { display: grid; gap: 11px; }
+.connection-row, .diagnostic-heading, .download-status-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.connection-row { padding: 14px 0; border-top: 1px solid #edf1f4; }
+.connection-actions { display: flex; align-items: center; gap: 8px; }
+.state-pill { display: inline-flex; padding: 5px 9px; border-radius: 20px; font-size: 10px; font-weight: 650; }
+.state-pill.success { background: #e7f7f0; color: #17876f; }
+.state-pill.warning { background: #fbf3e5; color: #9c7228; }
+.state-pill.danger { background: #fff0ef; color: #b34e49; }
+.diagnostic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.diagnostic-grid span { display: flex; justify-content: space-between; gap: 8px; padding: 9px 10px; border-radius: 7px; background: #f6f9fb; color: #718196; font-size: 11px; }
+.diagnostic-grid strong { color: #344b60; text-align: right; }
+.empty-state { padding: 18px 0; color: #7d8b9b; font-size: 13px; }
+.explorer-toolbar { margin-top: 20px; }
+.explorer-controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+.explorer-controls label { min-width: 185px; }
+.photo-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; gap: 12px; }
+.photo-filters label { display: grid; gap: 6px; color: #45596e; font-size: 12px; font-weight: 600; }
+.photo-date-heading { margin: 24px 0 12px; color: #30465b; font-size: 14px; }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 13px; }
+.photo-card { overflow: hidden; border: 1px solid #e6edf2; border-radius: 10px; background: #fff; }
+.photo-preview { display: grid; height: 165px; place-items: center; overflow: hidden; background: #f3f7f9; }
+.photo-preview img { width: 100%; height: 100%; object-fit: cover; }
+.photo-preview .generic-icon { width: 42px; height: 38px; }
+.photo-card-details { display: grid; gap: 5px; padding: 11px; color: #65768a; font-size: 10px; }
+.photo-card-details strong { overflow: hidden; color: #2a4964; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.photo-card-details small { overflow-wrap: anywhere; color: #8794a2; }
+.photo-select { display: flex; align-items: center; gap: 7px; margin-top: 5px; color: #506a70; font-size: 11px; }
+.photo-select input { accent-color: #189d91; }
+.folder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.folder-card { display: flex; align-items: center; gap: 11px; padding: 13px; border: 1px solid #e8eef3; border-radius: 9px; color: #334d65; text-decoration: none; }
+.folder-card:hover { border-color: #aedbd3; background: #f6fbf9; }
+.folder-card > span:nth-child(2) { display: grid; flex: 1; gap: 3px; }
+.folder-card small { color: #8794a2; font-size: 10px; }
+.folder-icon { color: #d0a54b; }
+.quick-paths { display: flex; gap: 12px; flex-wrap: wrap; }
+.quick-paths a, .breadcrumbs a { color: #2778bd; font-size: 12px; }
+.breadcrumbs { display: flex; align-items: center; gap: 9px; margin-bottom: 17px; color: #9aa5b1; font-size: 12px; }
+.breadcrumbs strong { color: #43586c; }
+.selection-summary { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 12px 0 16px; padding: 12px; border-radius: 8px; background: #f2f8f8; color: #506a70; font-size: 11px; }
+.selection-summary strong { color: #177f76; }
+.selection-summary .field-help { margin: 0; }
+.file-table { min-width: 920px; font-size: 11px; }
+.file-table th { color: #75869a; font-size: 10px; font-weight: 650; }
+.file-table td { color: #52657a; }
+.thumbnail { width: 42px; height: 34px; border-radius: 5px; object-fit: cover; background: #f0f3f5; }
+.thumbnail-wrapper { display: inline-flex; min-width: 42px; min-height: 34px; align-items: center; }
+.generic-icon { display: inline-grid; width: 34px; height: 30px; place-items: center; border-radius: 6px; background: #eef4f7; color: #6d8ca0; font-size: 18px; }
+.generic-icon.folder-icon { background: #fbf5e8; }
+.file-name { color: #2a4964; font-weight: 600; text-decoration: none; }
+.file-name:hover { color: #207d8b; }
+.remote-path { max-width: 220px; overflow-wrap: anywhere; color: #8794a2 !important; font-family: Consolas, monospace; font-size: 10px; }
+.pagination-controls { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+.download-confirmation { display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap; margin-top: 20px; padding-top: 16px; border-top: 1px solid #edf1f4; }
+.confirm-check { display: flex; align-items: center; gap: 8px; color: #586d80; font-size: 12px; }
+.download-status { border-color: #dcebe8; }
+.download-metrics { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; color: #778698; font-size: 10px; }
+.progress { height: 18px; background: #edf2f4; }
+.progress-bar { min-width: 35px; background: linear-gradient(90deg, #287ac0, #20a98f); font-size: 10px; }
+.error-list { margin: 12px 0; color: #ae4d49; font-size: 11px; }
+.download-items { margin-top: 15px; padding-left: 18px; color: #627588; font-size: 11px; }
+.download-items code { overflow-wrap: anywhere; }
+.section-title.compact { margin: 0 0 10px; }
+
+@media (max-width: 650px) {
+  .form-grid, .diagnostic-grid { grid-template-columns: 1fr; }
+  .panel-card, .diagnostic-card { padding: 16px; }
+  .connection-row, .download-status-heading { align-items: flex-start; flex-direction: column; }
+  .connection-actions { flex-wrap: wrap; }
+  .explorer-controls { align-items: stretch; flex-direction: column; }
+  .explorer-controls label { width: 100%; }
+  .photo-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 8px; }
+  .photo-preview { height: 130px; }
+  .download-metrics { align-items: flex-start; flex-direction: column; }
+}

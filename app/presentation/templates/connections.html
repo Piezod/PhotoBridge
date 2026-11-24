@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+{% set page = "connections" %}
+{% set page_title = "Conexiones" %}
+{% block content %}
+<div class="eyebrow">FASE 1A · SYNLOGY</div>
+<h1>Conexiones</h1>
+<p class="intro">Inicia la conexión manualmente. Las credenciales y sesiones nunca se envían al navegador en una URL.</p>
+
+<div class="security-note">
+  <strong>Conexión HTTPS verificada.</strong>
+  Puedes utilizar una URL QuickConnect, DDNS, IP accesible o VPN. QuickConnect se resuelve
+  únicamente dentro de dominios regionales HTTPS de Synology; PhotoBridge comprueba
+  <code>SYNO.API.Info</code> y las APIs necesarias antes de enviar credenciales.
+  La disponibilidad de API a través de QuickConnect depende de la configuración del NAS
+  y requiere validación manual. Puedes configurar una CA de confianza en <code>.env</code>.
+</div>
+
+<section class="panel-card">
+  <h2>Probar conexión a Synology</h2>
+  <p class="muted">PhotoBridge descubrirá las rutas y versiones de API disponibles en el dispositivo.</p>
+  <form method="post" action="/api/synology/connect"
+        hx-post="/api/synology/connect" hx-target="#connection-result" hx-swap="innerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-grid">
+      <label>Nombre descriptivo
+        <input class="form-control" name="name" value="{{ default_name }}" required maxlength="80" placeholder="Mi Synology">
+      </label>
+      <label>URL del servidor
+        <input class="form-control" type="url" name="server_url" value="{{ default_server_url }}" required placeholder="https://quickconnect.to/ID o https://nas.ejemplo.com:5001">
+      </label>
+      <label>Usuario DSM
+        <input class="form-control" name="username" value="{{ default_username }}" required autocomplete="username">
+      </label>
+      <label>Contraseña
+        <input class="form-control" type="password" name="password" autocomplete="current-password">
+        <span class="field-help">Se mantiene solo durante la autenticación salvo que elijas recordarla.</span>
+      </label>
+      <label class="remember-option">
+        <input type="checkbox" name="remember_password">
+        Recordar contraseña en el almacén seguro del sistema
+      </label>
+      <label>Código MFA (si Synology lo solicita)
+        <input class="form-control" name="otp_code" inputmode="numeric" autocomplete="one-time-code" maxlength="12">
+      </label>
+    </div>
+    <button class="btn btn-primary" type="submit">Probar conexión</button>
+  </form>
+</section>
+
+<div id="connection-result" aria-live="polite"></div>
+<div id="connection-list">
+  {% include "connection_list.html" %}
+</div>
+{% endblock %}

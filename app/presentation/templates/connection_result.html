@@ -1,0 +1,42 @@
+{% if error %}
+  <div class="alert alert-danger mt-3" role="alert">{{ error }}</div>
+{% endif %}
+{% if diagnostic %}
+  <section class="diagnostic-card mt-3" aria-label="Resultado de la conexión">
+    <div class="diagnostic-heading">
+      <h2>{{ diagnostic.name }}</h2>
+      <span class="state-pill {% if diagnostic.authenticated %}success{% else %}danger{% endif %}">
+        {% if diagnostic.authenticated %}Autenticación correcta{% else %}No autenticado{% endif %}
+      </span>
+    </div>
+    <p class="muted">{{ diagnostic.server_url }}</p>
+    <div class="diagnostic-grid">
+      <span>Servidor accesible <strong>Sí</strong></span>
+      {% if diagnostic.quickconnect %}
+        <span>QuickConnect <strong>Resuelto; API detectada</strong></span>
+      {% endif %}
+      <span>API File Station <strong>{{ "Disponible" if diagnostic.list_api_available else "No disponible" }}</strong></span>
+      <span>API de descarga <strong>{{ "Disponible" if diagnostic.download_api_available else "No disponible" }}</strong></span>
+      <span>API de miniaturas <strong>{{ "Disponible" if diagnostic.thumbnail_api_available else "No disponible" }}</strong></span>
+      <span>Permisos de lectura <strong>{{ "Comprobados" if diagnostic.read_access else "No comprobados" }}</strong></span>
+      <span>API Synology Photos <strong>{{ "Anunciada" if diagnostic.photos_api_available else "No disponible" }}</strong></span>
+      <span>Espacio personal <strong>{{ "Accesible" if diagnostic.photos_personal_space_accessible else "No comprobado" }}</strong></span>
+      <span>Espacio compartido <strong>{{ "Accesible" if diagnostic.photos_shared_space_accessible else "No comprobado" }}</strong></span>
+      <span>API de álbumes <strong>{{ "Probada" if diagnostic.photos_albums_available else "No disponible" }}</strong></span>
+      <span>API de miniaturas Photos <strong>{{ "Anunciada" if diagnostic.photos_thumbnail_available else "No disponible" }}</strong></span>
+      <span>API de descarga Photos <strong>{{ "Anunciada" if diagnostic.photos_download_available else "No disponible" }}</strong></span>
+      <span>Tiempo de respuesta <strong>{{ diagnostic.latency_ms }} ms</strong></span>
+    </div>
+    <p class="muted mt-2">{{ diagnostic.read_message }}</p>
+    <p class="muted mt-2">{{ diagnostic.photos_message }}</p>
+    {% if diagnostic.quickconnect %}
+      <p class="field-help">La conexión a través de QuickConnect no se considera validada hasta completar una prueba manual real.</p>
+    {% endif %}
+    <p class="field-help">La sesión se mantiene únicamente en memoria y no se expone al navegador.</p>
+  </section>
+{% endif %}
+<div id="connection-list" hx-swap-oob="outerHTML">
+  {% with error=None %}
+    {% include "connection_list.html" %}
+  {% endwith %}
+</div>

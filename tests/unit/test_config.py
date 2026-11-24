@@ -25,3 +25,20 @@ def test_server_cannot_bind_to_non_local_interfaces() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, host="0.0.0.0")
 
+
+def test_synology_download_limits_and_tls_defaults_are_secure(tmp_path) -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.synology_max_photos_per_operation == 10
+    assert settings.synology_max_operation_bytes == 250_000_000
+    assert settings.tls_verify() is True
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            synology_max_operation_bytes=250_000_001,
+        )
+    with pytest.raises(ValueError, match="CA configurado"):
+        Settings(
+            _env_file=None,
+            synology_ca_bundle=tmp_path / "missing-ca.pem",
+        ).tls_verify()

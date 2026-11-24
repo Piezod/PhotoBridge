@@ -1,0 +1,50 @@
+<section class="download-status panel-card mt-3"
+         {% if operation.state in ["PENDING", "DOWNLOADING", "DOWNLOADED", "VALIDATING"] %}
+           hx-get="/api/synology/downloads/{{ operation.operation_id }}"
+           hx-trigger="every 1s" hx-swap="outerHTML"
+         {% endif %}>
+  <div class="download-status-heading">
+    <div>
+      <span class="card-kicker">OPERACIÓN {{ operation.operation_id[:8] }}</span>
+      <h2>Descarga {{ operation.state.value|lower }}</h2>
+    </div>
+    <span class="state-pill {% if operation.state == 'COMPLETED' %}success{% elif operation.state in ['FAILED', 'CANCELLED'] %}danger{% else %}warning{% endif %}">
+      {{ operation.state.value }}
+    </span>
+  </div>
+  <p class="muted">Conexión: {{ operation.connection_name }}</p>
+  <p>Archivo actual: <strong>{{ operation.current_item or "Preparando…" }}</strong></p>
+  <div class="progress" role="progressbar" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100">
+    <div class="progress-bar" style="width: {{ percent }}%">{{ percent }}%</div>
+  </div>
+  <div class="download-metrics">
+    <span>{{ operation.current_bytes }} / {{ operation.current_total }} bytes</span>
+    <span>{{ current_speed }}</span>
+    <span>{{ completed_count }} / {{ total_count }} completados</span>
+  </div>
+  {% if operation.errors %}
+    <ul class="error-list">{% for error in operation.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if operation.state in ["PENDING", "DOWNLOADING", "DOWNLOADED", "VALIDATING"] %}
+    <form method="post" action="/api/synology/downloads/{{ operation.operation_id }}/cancel"
+          hx-post="/api/synology/downloads/{{ operation.operation_id }}/cancel"
+          hx-target="closest .download-status" hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-sm btn-outline-danger" type="submit">Cancelar descarga</button>
+    </form>
+  {% endif %}
+  {% if operation.report_path %}
+    <p class="field-help mt-3">Informe JSON: {{ operation.report_path }}</p>
+  {% endif %}
+  {% if operation.state == "COMPLETED" %}
+    <ul class="download-items">
+      {% for item in operation.items %}
+        <li>
+          <strong>{{ item.remote_path }}</strong> — {{ item.downloaded_size }} bytes; SHA-256 local:
+          <code>{{ item.sha256 }}</code>. Tamaño comprobado. Integridad remota:
+          {{ "verificada" if item.integrity_verified else "no verificada (Synology no proporcionó hash comparable)" }}.
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>

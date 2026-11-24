@@ -1,0 +1,325 @@
+{% extends "layout.html" %}
+{% set page = "explorer" %}
+{% set page_title = "Explorador" %}
+{% block content %}
+<div class="eyebrow">FASE 1B · NAVEGACIÓN DE SOLO LECTURA</div>
+<h1>Explorador de fotografías</h1>
+<p class="intro">Explora la biblioteca indexada de Synology Photos o navega por File Station. Las descargas de originales requieren confirmación manual.</p>
+
+{% if not connections %}
+  <section class="panel-card mt-4">
+    <p class="empty-state">Primero necesitas una sesión Synology activa.</p>
+    <a class="btn btn-primary" href="/connections">Configurar conexión</a>
+  </section>
+{% else %}
+  <section class="panel-card explorer-toolbar">
+    <form method="get" action="/explorer" class="explorer-controls">
+      <label>Conexión
+        <select class="form-select" name="connection_id" onchange="this.form.submit()">
+          {% for connection in connections %}
+            <option value="{{ connection.connection_id }}" {% if connection.connection_id == connection_id %}selected{% endif %}>{{ connection.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Origen
+        <select class="form-select" name="source" onchange="this.form.submit()">
+          <option value="photos" {% if source == "photos" %}selected{% endif %}
+                  {% if not active_connection or not active_connection.photos_api_available %}disabled{% endif %}>Biblioteca Synology Photos</option>
+          <option value="files" {% if source == "files" %}selected{% endif %}>File Station</option>
+        </select>
+      </label>
+      {% if source == "photos" %}
+        <label>Espacio
+          <select class="form-select" name="space" onchange="this.form.submit()">
+            <option value="personal" {% if space == "personal" %}selected{% endif %}
+                    {% if not active_connection.photos_personal_space_accessible %}disabled{% endif %}>Personal</option>
+            <option value="shared" {% if space == "shared" %}selected{% endif %}
+                    {% if not active_connection.photos_shared_space_accessible %}disabled{% endif %}>Compartido</option>
+          </select>
+        </label>
+      {% else %}
+        <label>Filtrar extensiones
+          <select class="form-select" name="extensions" multiple size="3">
+            {% for extension in extensions %}
+              <option value="{{ extension }}" {% if extension in selected_extensions %}selected{% endif %}>.{{ extension }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% if path %}<input type="hidden" name="path" value="{{ path }}">{% endif %}
+      {% endif %}
+      <button class="btn btn-outline-primary" type="submit">Aplicar filtro</button>
+      {% if source == "photos" %}
+        <a class="btn btn-outline-secondary" href="/explorer?connection_id={{ connection_id }}&amp;source=photos&amp;space={{ space }}">Actualizar</a>
+      {% elif path %}
+        <a class="btn btn-outline-secondary" href="/explorer?connection_id={{ connection_id }}&amp;path={{ path|urlencode }}">Actualizar</a>
+      {% else %}
+        <a class="btn btn-outline-secondary" href="/explorer?connection_id={{ connection_id }}">Actualizar</a>
+      {% endif %}
+    </form>
+  </section>
+  {% if source == "photos" %}
+    {% if photo_error %}<div class="alert alert-warning mt-3" role="alert">{{ photo_error }}</div>{% endif %}
+    {% if photo_folder_error %}<div class="alert alert-info mt-3" role="status">{{ photo_folder_error }}</div>{% endif %}
+    {% if photo_album_error %}<div class="alert alert-info mt-3" role="status">{{ photo_album_error }}</div>{% endif %}
+    {% if not active_connection.photos_download_available %}
+      <div class="alert alert-info mt-3" role="status">La descarga de originales de Synology Photos permanece deshabilitada hasta investigar y validar su contrato.</div>
+    {% endif %}
+    <section class="panel-card mt-3">
+      <form method="get" action="/explorer" class="photo-filters">
+        <input type="hidden" name="connection_id" value="{{ connection_id }}">
+        <input type="hidden" name="source" value="photos">
+        <input type="hidden" name="space" value="{{ space }}">
+        {% if folder_id is not none %}<input type="hidden" name="folder_id" value="{{ folder_id }}">{% endif %}
+        <label>Nombre
+          <input class="form-control" name="name" value="{{ name_filter }}" maxlength="120">
+        </label>
+        <label>Extensión
+          <select class="form-select" name="extension">
+            <option value="">Todas</option>
+            {% for extension in photo_extensions %}
+              <option value="{{ extension }}" {% if extension_filter == extension %}selected{% endif %}>.{{ extension }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Tipo
+          <select class="form-select" name="media_type">
+            <option value="">Fotos y vídeos</option>
+            <option value="photo" {% if media_type_filter == "photo" %}selected{% endif %}>Fotografías</option>
+            <option value="video" {% if media_type_filter == "video" %}selected{% endif %}>Vídeos</option>
+          </select>
+        </label>
+        <label>Desde
+          <input class="form-control" type="date" name="date_from" value="{{ date_from }}">
+        </label>
+        <label>Hasta
+          <input class="form-control" type="date" name="date_to" value="{{ date_to }}">
+        </label>
+        {% if photo_albums %}
+          <label>Álbum
+            <select class="form-select" name="album_id">
+              <option value="">Toda la biblioteca</option>
+              {% for album in photo_albums %}
+                <option value="{{ album.album_id }}" {% if album_id == album.album_id %}selected{% endif %}>{{ album.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        {% endif %}
+        <button class="btn btn-outline-primary align-self-end" type="submit">Filtrar</button>
+      </form>
+    </section>
+    <section class="panel-card mt-3">
+      <nav class="breadcrumbs" aria-label="Ruta de biblioteca">
+        <a href="/explorer?connection_id={{ connection_id }}&amp;source=photos&amp;space={{ space }}">Biblioteca {{ "personal" if space == "personal" else "compartida" }}</a>
+        {% if parent_folder_id is not none and parent_folder_id not in [0, 1] %}
+          <span aria-hidden="true">/</span><a href="/explorer?connection_id={{ connection_id }}&amp;source=photos&amp;space={{ space }}&amp;folder_id={{ parent_folder_id }}">Carpeta anterior</a>
+        {% endif %}
+        {% if current_folder_name %}<span aria-hidden="true">/</span><strong>{{ current_folder_name }}</strong>{% endif %}
+      </nav>
+      {% if active_connection.photos_download_available %}
+        {% with count=photo_selection_count, total_size=photo_selection_size, size=format_size(photo_selection_size), error=None %}
+          {% include "selection_summary.html" %}
+        {% endwith %}
+      {% endif %}
+      {% if photo_folders %}
+        <h2 class="section-title compact">Carpetas</h2>
+        <div class="folder-grid">
+          {% for folder in photo_folders %}
+            <a class="folder-card" href="/explorer?connection_id={{ connection_id }}&amp;source=photos&amp;space={{ space }}&amp;folder_id={{ folder.folder_id }}&amp;parent_folder_id={{ folder.parent_id }}&amp;folder_name={{ folder.name|urlencode }}">
+              <span class="folder-icon" aria-hidden="true">▰</span>
+              <span><strong>{{ folder.name }}</strong><small>Carpeta Synology Photos · {{ folder.folder_id }}</small></span>
+              <span aria-hidden="true">›</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if photo_groups %}
+        {% for group_name, group_photos in photo_groups %}
+          <h2 class="photo-date-heading">{{ group_name }}</h2>
+          <div class="photo-grid">
+            {% for photo in group_photos %}
+              <article class="photo-card">
+                <a class="photo-preview" href="/api/synology/{{ connection_id }}/photo-thumbnail?photo_id={{ photo.photo_id|urlencode }}&amp;size=xl" target="_blank" rel="noopener">
+                  {% if photo.thumbnail_cache_key %}
+                    <img src="/api/synology/{{ connection_id }}/photo-thumbnail?photo_id={{ photo.photo_id|urlencode }}"
+                         class="photo-thumbnail"
+                         alt="Vista previa de {{ photo.name }}" loading="lazy">
+                    <span class="generic-icon" aria-hidden="true" hidden>▧</span>
+                  {% else %}
+                    <span class="generic-icon" aria-label="Miniatura no disponible">▧</span>
+                  {% endif %}
+                </a>
+                <div class="photo-card-details">
+                  <strong title="{{ photo.name }}">{{ photo.name }}</strong>
+                  <span>{{ photo.metadata.captured_at.strftime("%d/%m/%Y %H:%M") if photo.metadata.captured_at else "Fecha de captura desconocida" }}</span>
+                  <span>{{ "Vídeo" if photo.media_type == "video" else "Fotografía" }} · {{ format_size(photo.size) }} · {{ photo.extension|upper }}</span>
+                  {% if photo.metadata.width and photo.metadata.height %}
+                    <span>{{ photo.metadata.width }} × {{ photo.metadata.height }} px</span>
+                  {% endif %}
+                  <small>Espacio {{ space }} · carpeta {{ photo.folder_id }} · ID {{ photo.item_id }}</small>
+                  {% if active_connection.photos_download_available and photo.media_type == "photo" and photo.extension in downloadable_extensions %}
+                  <form method="post" action="/api/synology/{{ connection_id }}/photo-selection"
+                        hx-post="/api/synology/{{ connection_id }}/photo-selection"
+                        hx-trigger="change" hx-target="#selection-summary" hx-swap="outerHTML">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="photo_id" value="{{ photo.photo_id }}">
+                    <label class="photo-select">
+                      <input type="checkbox" name="checked" aria-label="Seleccionar {{ photo.name }}"
+                             data-size="{{ photo.size }}"
+                             data-server-checked="{{ 'true' if photo.photo_id in selected_photo_ids else 'false' }}"
+                             {% if photo.photo_id in selected_photo_ids %}checked{% endif %}>
+                      Seleccionar
+                    </label>
+                  </form>
+                  {% elif photo.media_type == "video" %}
+                    <small>La selección y descarga de vídeos no está habilitada.</small>
+                  {% else %}
+                    <small>La descarga de originales no está validada.</small>
+                  {% endif %}
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      {% elif not photo_folders %}
+        <p class="empty-state">No se encontraron elementos multimedia en esta página.</p>
+      {% endif %}
+      <div class="pagination-controls">
+        {% if offset > 0 %}
+          <a class="btn btn-sm btn-outline-secondary" href="/explorer?connection_id={{ connection_id }}&amp;source=photos&amp;space={{ space }}&amp;offset={{ [offset - 50, 0]|max }}{% if folder_id is not none %}&amp;folder_id={{ folder_id }}{% endif %}{% if media_type_filter %}&amp;media_type={{ media_type_filter }}{% endif %}{% if album_id %}&amp;album_id={{ album_id|urlencode }}{% endif %}{% if name_filter %}&amp;name={{ name_filter|urlencode }}{% endif %}{% if extension_filter %}&amp;extension={{ extension_filter }}{% endif %}{% if date_from %}&amp;date_from={{ date_from }}{% endif %}{% if date_to %}&amp;date_to={{ date_to }}{% endif %}">Anterior</a>
+        {% endif %}
+        {% if photo_has_more %}
+          <a class="btn btn-sm btn-outline-secondary" href="/explorer?connection_id={{ connection_id }}&amp;source=photos&amp;space={{ space }}&amp;offset={{ offset + 50 }}{% if folder_id is not none %}&amp;folder_id={{ folder_id }}{% endif %}{% if media_type_filter %}&amp;media_type={{ media_type_filter }}{% endif %}{% if album_id %}&amp;album_id={{ album_id|urlencode }}{% endif %}{% if name_filter %}&amp;name={{ name_filter|urlencode }}{% endif %}{% if extension_filter %}&amp;extension={{ extension_filter }}{% endif %}{% if date_from %}&amp;date_from={{ date_from }}{% endif %}{% if date_to %}&amp;date_to={{ date_to }}{% endif %}">Siguiente</a>
+        {% endif %}
+        <span class="field-help">La biblioteca se consulta por páginas de hasta 50 elementos; no se realiza un escaneo masivo.</span>
+      </div>
+      {% if active_connection.photos_download_available %}
+      <form class="download-confirmation" method="post" action="/api/synology/{{ connection_id }}/downloads"
+            hx-post="/api/synology/{{ connection_id }}/downloads"
+            hx-target="#download-result" hx-swap="innerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="source" value="photos">
+        <label class="confirm-check">
+          <input type="checkbox" name="confirm_download" required>
+          Confirmo manualmente la descarga de la selección de Synology Photos.
+        </label>
+        <button class="btn btn-primary" type="submit">Descargar selección</button>
+      </form>
+      <div id="download-result" aria-live="polite"></div>
+      {% endif %}
+    </section>
+  {% else %}
+  {% if error %}<div class="alert alert-warning mt-3" role="alert">{{ error }}</div>{% endif %}
+
+  {% if not path and not error %}
+    <section class="panel-card mt-3">
+      <div class="section-title compact">
+        <div>
+          <h2>Carpetas compartidas</h2>
+          <p class="muted">Solo aparecen las carpetas que Synology autoriza a esta cuenta.</p>
+        </div>
+      </div>
+      {% if shares %}
+        <div class="folder-grid">
+          {% for share in shares %}
+            <a class="folder-card" href="/explorer?connection_id={{ connection_id }}&amp;path={{ share.path|urlencode }}">
+              <span class="folder-icon" aria-hidden="true">▰</span>
+              <span><strong>{{ share.name }}</strong><small>{{ share.path }}</small></span>
+              <span aria-hidden="true">›</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if not shares %}<p class="empty-state">No hay carpetas compartidas visibles.</p>{% endif %}
+      {% if has_more %}
+        <a class="btn btn-sm btn-outline-secondary" href="/explorer?connection_id={{ connection_id }}&amp;offset={{ offset + 50 }}">Siguientes carpetas</a>
+      {% endif %}
+      <p class="muted mt-3">Rutas habituales (se consultan solo si las abres; pueden no existir o no ser accesibles):</p>
+      <div class="quick-paths">
+        <a href="/explorer?connection_id={{ connection_id }}&amp;path=%2Fhome%2FPhotos">Probar /home/Photos</a>
+        <a href="/explorer?connection_id={{ connection_id }}&amp;path=%2Fphoto">Probar /photo</a>
+      </div>
+    </section>
+  {% elif path and not error %}
+    <section class="panel-card mt-3">
+      <nav class="breadcrumbs" aria-label="Ruta">
+        {% for label, crumb_path in breadcrumbs %}
+          {% if not loop.last %}<a href="/explorer?connection_id={{ connection_id }}{% if crumb_path %}&amp;path={{ crumb_path|urlencode }}{% endif %}">{{ label }}</a><span aria-hidden="true">/</span>
+          {% else %}<strong>{{ label }}</strong>{% endif %}
+        {% endfor %}
+      </nav>
+      {% with count=selection_count, total_size=selection_size, size=format_size(selection_size), error=None %}
+        {% include "selection_summary.html" %}
+      {% endwith %}
+      {% if files %}
+        <div class="table-responsive">
+          <table class="table file-table align-middle">
+            <thead><tr><th>Tipo</th><th>Nombre</th><th>Extensión</th><th>Tamaño</th><th>Modificado</th><th>Ruta remota</th><th>Seleccionar</th></tr></thead>
+            <tbody>
+              {% for item in files %}
+                <tr>
+                  <td>
+                    {% if item.is_directory %}<span class="generic-icon folder-icon" aria-label="Carpeta">▰</span>
+                    {% elif item.extension in ["jpg", "jpeg", "png", "heic", "webp"] and request.app.state.synology_connections.get_connection(connection_id).diagnostic.thumbnail_api_available %}
+                      <span class="thumbnail-wrapper">
+                        <img class="thumbnail" src="/api/synology/{{ connection_id }}/thumbnail?path={{ item.path|urlencode }}" alt="" loading="lazy">
+                        <span class="generic-icon" aria-label="Fotografía" hidden>▧</span>
+                      </span>
+                    {% else %}<span class="generic-icon" aria-label="Fotografía">▧</span>{% endif %}
+                  </td>
+                  <td>
+                    {% if item.is_directory %}
+                      <a class="file-name" href="/explorer?connection_id={{ connection_id }}&amp;path={{ item.path|urlencode }}">{{ item.name }}</a>
+                    {% else %}<span class="file-name">{{ item.name }}</span>{% endif %}
+                  </td>
+                  <td>{{ item.extension|upper if item.extension else "—" }}</td>
+                  <td>{{ format_size(item.size or 0) if item.size is not none else "—" }}</td>
+                  <td>{{ item.modified_at.strftime("%d/%m/%Y %H:%M") if item.modified_at else "—" }}</td>
+                  <td class="remote-path">{{ item.path }}</td>
+                  <td>
+                    {% if not item.is_directory and item.extension in extensions and item.size is not none %}
+                      <form method="post" action="/api/synology/{{ connection_id }}/selection"
+                            hx-post="/api/synology/{{ connection_id }}/selection"
+                            hx-trigger="change" hx-target="#selection-summary" hx-swap="outerHTML">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="path" value="{{ item.path }}">
+                        <input type="checkbox" name="checked" aria-label="Seleccionar {{ item.name }}"
+                               data-size="{{ item.size }}"
+                               data-server-checked="{{ 'true' if item.path in selected_paths else 'false' }}"
+                               {% if item.path in selected_paths %}checked{% endif %}>
+                      </form>
+                    {% else %}<span class="muted">—</span>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination-controls">
+          {% if offset > 0 %}
+            <a class="btn btn-sm btn-outline-secondary" href="/explorer?connection_id={{ connection_id }}&amp;path={{ path|urlencode }}&amp;offset={{ [offset - 50, 0]|max }}&amp;extensions={{ selected_extensions|join(',') }}">Anterior</a>
+          {% endif %}
+          {% if has_more %}
+            <a class="btn btn-sm btn-outline-secondary" href="/explorer?connection_id={{ connection_id }}&amp;path={{ path|urlencode }}&amp;offset={{ offset + 50 }}&amp;extensions={{ selected_extensions|join(',') }}">Siguiente</a>
+          {% endif %}
+          <span class="field-help">Máximo 50 elementos por petición.</span>
+        </div>
+      {% else %}
+        <p class="empty-state">Esta carpeta está vacía o no contiene fotografías compatibles.</p>
+      {% endif %}
+
+      <form class="download-confirmation" method="post" action="/api/synology/{{ connection_id }}/downloads"
+            hx-post="/api/synology/{{ connection_id }}/downloads"
+            hx-target="#download-result" hx-swap="innerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="confirm-check">
+          <input type="checkbox" name="confirm_download" required>
+          Confirmo manualmente la descarga de la selección mostrada arriba.
+        </label>
+        <button class="btn btn-primary" type="submit">Descargar selección</button>
+      </form>
+      <div id="download-result" aria-live="polite"></div>
+    </section>
+  {% endif %}
+  {% endif %}
+{% endif %}
+{% endblock %}

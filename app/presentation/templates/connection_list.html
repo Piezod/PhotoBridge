@@ -1,0 +1,38 @@
+<div id="connection-list">
+  {% if error %}<div class="alert alert-warning mt-3">{{ error }}</div>{% endif %}
+  <section class="panel-card mt-4">
+    <div class="section-title compact">
+      <div>
+        <h2>Sesiones activas</h2>
+        <p class="muted">Las sesiones DSM existen solo mientras PhotoBridge está ejecutándose.</p>
+      </div>
+    </div>
+    {% if connections %}
+      <div class="connection-list">
+        {% for connection in connections %}
+          <article class="connection-row">
+            <div>
+              <strong>{{ connection.name }}</strong>
+              <p class="muted mb-1">{{ connection.server_url }}</p>
+              <span class="state-pill success">Sesión autenticada</span>
+              <span class="state-pill {% if connection.read_access %}success{% else %}warning{% endif %}">
+                {{ "Lectura comprobada" if connection.read_access else "Lectura pendiente" }}
+              </span>
+            </div>
+            <div class="connection-actions">
+              <a class="btn btn-sm btn-outline-primary" href="/explorer?connection_id={{ connection.connection_id }}">Abrir explorador</a>
+              <form method="post" action="/api/synology/{{ connection.connection_id }}/disconnect"
+                    hx-post="/api/synology/{{ connection.connection_id }}/disconnect"
+                    hx-target="#connection-list" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn btn-sm btn-outline-danger" type="submit">Desconectar</button>
+              </form>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty-state">No hay sesiones Synology activas.</p>
+    {% endif %}
+  </section>
+</div>

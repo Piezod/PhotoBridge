@@ -16,7 +16,41 @@ Python 3.12, FastAPI, Uvicorn, HTTPX, Playwright Python, SQLAlchemy 2, SQLite, A
 - data/ para SQLite, temporales y perfiles de navegador; excluir de Git.
 
 ## Reglas de trabajo
-Implementar únicamente la fase solicitada. Antes de editar, revisar el repositorio y PROGRESS.md, proponer cambios y criterios de aceptación. Mantener tipado, funciones pequeñas, inyección de dependencias, errores explícitos, logs estructurados sin secretos y pruebas reproducibles. Usar async para HTTP y Playwright; no bloquear el event loop con operaciones de disco o hash. No añadir dependencias sin justificar. Ejecutar pruebas y Ruff al terminar; informar comandos y resultados reales. Actualizar PROGRESS.md con decisiones, pendientes, pruebas y siguiente fase. Registrar decisiones relevantes en ADR. No inventar endpoints ni resultados de pruebas reales.
+Implementar exclusivamente la funcionalidad solicitada en cada prompt. Consultar solo el contexto y los documentos necesarios para esa tarea; no repetir análisis ni comprobaciones redundantes. Mantener tipado, funciones pequeñas, inyección de dependencias, errores explícitos y logs estructurados sin secretos. Usar async para HTTP y Playwright; no bloquear el event loop con operaciones de disco o hash. No añadir dependencias sin justificar.
+
+### Metodología obligatoria de validación
+- No crear pruebas unitarias ni de integración nuevas. Conservar las pruebas existentes sin ejecutarlas.
+- No ejecutar pruebas existentes ni herramientas de validación automatizada: pytest, Ruff, Pylance, linters, comprobaciones de tipos, `git diff --check`, pruebas HTTP o comprobaciones funcionales automatizadas.
+- No realizar conexiones de prueba a servicios externos. El usuario realiza las pruebas funcionales y comunica los errores para su corrección.
+- No marcar ninguna funcionalidad como validada hasta recibir confirmación explícita del usuario. Mantener por separado lo implementado y lo pendiente de validación manual.
+- Actualizar `docs/ROADMAP.md` y `docs/PROGRESS.md` en cada tarea pertinente, reflejando implementación y validación pendiente; conservar el historial y no inventar resultados.
+- Al terminar una implementación funcional, arrancar o reiniciar PhotoBridge en `127.0.0.1`, indicar la URL accesible y resumir brevemente los cambios; detenerse y esperar la validación del usuario. No reiniciar por una tarea exclusivamente documental.
+- Aplicar estas restricciones también a `PB-002-FIX-003`, además de cualquier prompt posterior.
+- Trabajar únicamente en `develop`: no crear ramas, commits ni hacer push.
+- Minimizar el consumo de tokens, evitar refactorizaciones no solicitadas y no realizar comprobaciones adicionales tras implementar los cambios.
+
+Estas reglas prevalecen sobre cualquier instrucción previa que exija crear o ejecutar pruebas o comprobaciones automatizadas. Mantener **TOOLS FIRST, AI SECOND**; no implementar IA, LLM ni skills sin autorización expresa.
+
+### MCP de navegador para investigación solicitada
+- Usar Chrome DevTools MCP preferentemente para investigar APIs, tráfico de red, peticiones/respuestas HTTP, payloads, errores de consola y endpoints.
+- Usar Microsoft Playwright MCP para navegar e interactuar con páginas, pestañas, DOM y aplicaciones autenticadas. Priorizar la investigación autónoma mediante estas herramientas frente a pedir capturas manuales.
+- La investigación técnica mediante MCP está permitida cuando el usuario la solicite; esto no modifica la metodología de pruebas de PhotoBridge: el usuario sigue siendo responsable de su validación funcional.
+- Mantener perfiles dedicados y persistentes; el usuario introduce credenciales y completa MFA manualmente. No guardar credenciales en código/configuración ni mostrar o registrar cookies, contraseñas, tokens o identificadores de sesión.
+- No realizar acciones destructivas en sitios externos. Solicitar autorización expresa antes de modificar datos externos.
+- Estos servidores MCP son herramientas de desarrollo de Copilot y no dependencias ni componentes de la aplicación Python.
+
+## Seguimiento documental obligatorio
+En cada ejecución, consultar estas instrucciones y las secciones/documentos pertinentes a la tarea, sin lecturas redundantes. Consultar y actualizar `docs/ROADMAP.md` y `docs/PROGRESS.md`; si alguno no existe, crearlo sin inventar historial. Mantener el progreso previo y añadir un registro fechado/identificado por tarea; actualizar también el estado vigente del roadmap. No ejecutar las validaciones automatizadas que se enumeran en la sección anterior.
+
+El roadmap debe agrupar criterios por fases y distinguir explícitamente `Pendiente`, `Implementado`, `Testado automáticamente`, `Validado manualmente` y `Bloqueado`. Solo marcar validación manual cuando exista confirmación expresa del usuario; los resultados históricos de pruebas no equivalen a validación funcional real. No ejecutar pruebas para actualizar el estado: registrar únicamente resultados históricos ya comunicados y anotar que la validación nueva queda a cargo del usuario.
+
+## Evolución de arquitectura
+Mantener los servicios de conexión, exploración, descarga y subida independientes de la interfaz y utilizables mediante contratos de aplicación. La estrategia futura es **TOOLS FIRST, AI SECOND**: las herramientas y reglas de negocio deben ser correctas, seguras y verificables antes de integrarlas con Copilot SDK o skills. No implementar IA, LLM ni skills sin autorización expresa para su fase.
+
+## Synology Photos
+Mantener Synology Photos y File Station como adaptadores separados; preferir Photos para la biblioteca indexada solo cuando `SYNO.API.Info` y las comprobaciones de lectura respalden la capacidad. Descubrir las rutas/versiones dinámicamente; no fijar versiones DSM ni asumir que Photo IDs son rutas File Station.
+
+Las API web `SYNO.Foto.*` y `SYNO.FotoTeam.*` son interfaces internas/no documentadas por Synology. Antes de usarlas, comprobar fuentes y contratos observables, diferenciar documentación oficial de ingeniería inversa y documentar las incertidumbres en ADR/PROGRESS. No presentar disponibilidad descubierta como compatibilidad garantizada ni marcar una integración manual como validada sin confirmación real del usuario. Mantener cookies, SID y tokens en el backend; no exponerlos en navegador, URLs visibles, logs o informes. Las pruebas deben usar mocks y nunca conectar a un NAS automáticamente.
 
 ## Seguridad
 Escuchar solo en 127.0.0.1 por defecto. Validar origen de solicitudes y proteger operaciones mutables contra CSRF. Credenciales Synology mediante keyring de Windows; nunca en SQLite, .env, Git o logs. En otros sistemas exigir almacén seguro compatible o entrada manual. Amazon: inicio manual en navegador visible y perfil persistente separado por cuenta, protegido mediante permisos locales. No almacenar contraseñas Amazon ni automatizar CAPTCHA/MFA. No desactivar TLS; aceptar CA de confianza configurada cuando proceda. Validar URL y limitar redirecciones para no reenviar secretos a terceros. Redactar tokens y cookies. Evitar traversal de rutas y nombres peligrosos. No exponer la aplicación a Internet. Usar cuentas con permisos mínimos de lectura en Synology.

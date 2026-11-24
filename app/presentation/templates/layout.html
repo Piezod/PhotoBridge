@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f8fc">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{{ title|default(app_name ~ ' · ' ~ page_title|default('Inicio')) }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/vendor/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <script src="{{ url_for('static', path='/vendor/htmx.min.js') }}" defer></script>
+    <script src="{{ url_for('static', path='/photobridge.js') }}" defer></script>
+  </head>
+  <body>
+    <div class="app-shell container-fluid p-0">
+      <aside class="sidebar" aria-label="Navegación principal">
+        <a class="brand" href="/" aria-label="{{ app_name }} - Inicio">
+          <span class="brand-mark" aria-hidden="true">P</span>
+          <span class="brand-name">{{ app_name }}</span>
+        </a>
+        <p class="nav-heading">ESPACIO DE TRABAJO</p>
+        <nav class="navigation">
+          <a class="nav-link {% if page == 'home' %}active{% endif %}" href="/" {% if page == 'home' %}aria-current="page"{% endif %}>
+            <span class="nav-icon" aria-hidden="true">⌂</span>Inicio
+          </a>
+          <a class="nav-link {% if page == 'connections' %}active{% endif %}" href="/connections" {% if page == 'connections' %}aria-current="page"{% endif %}>
+            <span class="nav-icon" aria-hidden="true">↔</span>Conexiones
+          </a>
+          <a class="nav-link {% if page == 'explorer' %}active{% endif %}" href="/explorer" {% if page == 'explorer' %}aria-current="page"{% endif %}>
+            <span class="nav-icon" aria-hidden="true">▦</span>Explorador
+          </a>
+          <span class="nav-link unavailable" aria-disabled="true">
+            <span class="nav-icon" aria-hidden="true">⇄</span>Migraciones
+            <span class="soon">Próximamente</span>
+          </span>
+          <span class="nav-link unavailable" aria-disabled="true">
+            <span class="nav-icon" aria-hidden="true">◷</span>Historial
+            <span class="soon">Próximamente</span>
+          </span>
+          <span class="nav-link unavailable" aria-disabled="true">
+            <span class="nav-icon" aria-hidden="true">⚙</span>Configuración
+            <span class="soon">Próximamente</span>
+          </span>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>Aplicación local</span>
+          <span class="version">FASE 1</span>
+        </div>
+      </aside>
+      <main class="main-content">
+        <header class="topbar">
+          <span>{{ page_title|default('Espacio de trabajo') }}</span>
+          <span class="local-badge badge rounded-pill"><span aria-hidden="true">●</span> Solo en este dispositivo</span>
+        </header>
+        <section class="page-content">
+          {% block content %}{% endblock %}
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

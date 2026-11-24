@@ -1,0 +1,7 @@
+<div id="selection-summary" class="selection-summary" aria-live="polite"
+     data-count="{{ count }}" data-size="{{ total_size }}">
+  <span><strong>{{ count }}</strong> fotografías seleccionadas</span>
+  <span>Tamaño total: <strong>{{ size }}</strong></span>
+  <span class="field-help">Límite: 10 fotografías y 250 MB por operación.</span>
+  {% if error %}<span class="text-danger">{{ error }}</span>{% endif %}
+</div>
