@@ -11,6 +11,7 @@ class DownloadState(StrEnum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    SKIPPED = "SKIPPED"
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ class DownloadItem:
     sha256: str | None = None
     error: str | None = None
     integrity_verified: bool = False
+    partial_path: str | None = None
 
 
 @dataclass
@@ -62,3 +64,5 @@ class DownloadOperation:
     errors: list[str] = field(default_factory=list)
     report_path: str | None = None
     cancel_requested: bool = False
+    album_id: str | None = None
+    album_name: str | None = None

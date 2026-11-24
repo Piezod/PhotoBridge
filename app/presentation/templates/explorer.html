@@ -69,7 +69,7 @@
         <input type="hidden" name="connection_id" value="{{ connection_id }}">
         <input type="hidden" name="source" value="photos">
         <input type="hidden" name="space" value="{{ space }}">
-        {% if folder_id is not none %}<input type="hidden" name="folder_id" value="{{ folder_id }}">{% endif %}
+        {% if folder_id is not none and not album_id %}<input type="hidden" name="folder_id" value="{{ folder_id }}">{% endif %}
         <label>Nombre
           <input class="form-control" name="name" value="{{ name_filter }}" maxlength="120">
         </label>
@@ -94,18 +94,31 @@
         <label>Hasta
           <input class="form-control" type="date" name="date_to" value="{{ date_to }}">
         </label>
-        {% if photo_albums %}
+        {% if space == "personal" and active_connection.photos_albums_available %}
+          <label>Buscar álbum
+            <input class="form-control" name="album_name" value="{{ album_name_filter }}" maxlength="120" placeholder="Nombre del álbum">
+          </label>
           <label>Álbum
             <select class="form-select" name="album_id">
               <option value="">Toda la biblioteca</option>
               {% for album in photo_albums %}
-                <option value="{{ album.album_id }}" {% if album_id == album.album_id %}selected{% endif %}>{{ album.name }}</option>
+                <option value="{{ album.album_id }}" {% if album_id == album.album_id %}selected{% endif %}>{{ album.name }} ({{ album.item_count }} elementos)</option>
               {% endfor %}
             </select>
           </label>
         {% endif %}
         <button class="btn btn-outline-primary align-self-end" type="submit">Filtrar</button>
       </form>
+      {% if not album_name_filter %}
+        <div class="pagination-controls">
+          {% if album_offset > 0 %}
+            <a href="/explorer?connection_id={{ connection_id }}&amp;source=photos&amp;album_offset={{ [album_offset - 50, 0]|max }}{% if album_id %}&amp;album_id={{ album_id|urlencode }}{% endif %}">Álbumes anteriores</a>
+          {% endif %}
+          {% if album_has_more %}
+            <a href="/explorer?connection_id={{ connection_id }}&amp;source=photos&amp;album_offset={{ album_offset + 50 }}{% if album_id %}&amp;album_id={{ album_id|urlencode }}{% endif %}">Siguientes álbumes</a>
+          {% endif %}
+        </div>
+      {% endif %}
     </section>
     <section class="panel-card mt-3">
       <nav class="breadcrumbs" aria-label="Ruta de biblioteca">
@@ -115,10 +128,20 @@
         {% endif %}
         {% if current_folder_name %}<span aria-hidden="true">/</span><strong>{{ current_folder_name }}</strong>{% endif %}
       </nav>
-      {% if active_connection.photos_download_available %}
+      {% if selected_album %}
+        <h2>{{ selected_album.name }}</h2>
+        <p>{{ selected_album.item_count }} elementos en el álbum (incluidos formatos no descargables).</p>
+      {% endif %}
+      {% if active_connection.photos_download_available and selected_album %}
         {% with count=photo_selection_count, total_size=photo_selection_size, size=format_size(photo_selection_size), error=None %}
           {% include "selection_summary.html" %}
         {% endwith %}
+        <form method="post" action="/api/synology/{{ connection_id }}/photo-selection-action">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="offset" value="{{ offset }}">
+          <button class="btn btn-sm btn-outline-primary" name="action" value="visible" type="submit">Seleccionar fotografías visibles</button>
+          <button class="btn btn-sm btn-outline-secondary" name="action" value="clear" type="submit">Limpiar selección</button>
+        </form>
       {% endif %}
       {% if photo_folders %}
         <h2 class="section-title compact">Carpetas</h2>
@@ -156,7 +179,7 @@
                     <span>{{ photo.metadata.width }} × {{ photo.metadata.height }} px</span>
                   {% endif %}
                   <small>Espacio {{ space }} · carpeta {{ photo.folder_id }} · ID {{ photo.item_id }}</small>
-                  {% if active_connection.photos_download_available and photo.media_type == "photo" and photo.extension in downloadable_extensions %}
+                  {% if selected_album and active_connection.photos_download_available and photo.media_type == "photo" and photo.extension in downloadable_extensions %}
                   <form method="post" action="/api/synology/{{ connection_id }}/photo-selection"
                         hx-post="/api/synology/{{ connection_id }}/photo-selection"
                         hx-trigger="change" hx-target="#selection-summary" hx-swap="outerHTML">
@@ -173,7 +196,7 @@
                   {% elif photo.media_type == "video" %}
                     <small>La selección y descarga de vídeos no está habilitada.</small>
                   {% else %}
-                    <small>La descarga de originales no está validada.</small>
+                    <small>Selecciona un álbum para descargar originales.</small>
                   {% endif %}
                 </div>
               </article>
@@ -192,17 +215,13 @@
         {% endif %}
         <span class="field-help">La biblioteca se consulta por páginas de hasta 50 elementos; no se realiza un escaneo masivo.</span>
       </div>
-      {% if active_connection.photos_download_available %}
-      <form class="download-confirmation" method="post" action="/api/synology/{{ connection_id }}/downloads"
-            hx-post="/api/synology/{{ connection_id }}/downloads"
+      {% if active_connection.photos_download_available and selected_album %}
+      <form class="download-confirmation" method="post" action="/api/synology/{{ connection_id }}/photo-download-preview"
+            hx-post="/api/synology/{{ connection_id }}/photo-download-preview"
             hx-target="#download-result" hx-swap="innerHTML">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="source" value="photos">
-        <label class="confirm-check">
-          <input type="checkbox" name="confirm_download" required>
-          Confirmo manualmente la descarga de la selección de Synology Photos.
-        </label>
-        <button class="btn btn-primary" type="submit">Descargar selección</button>
+        <button class="btn btn-primary" type="submit">Revisar fotografías seleccionadas</button>
       </form>
       <div id="download-result" aria-live="polite"></div>
       {% endif %}

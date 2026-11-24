@@ -1,6 +1,6 @@
 import json
 import ssl
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
@@ -283,7 +283,7 @@ class SynologyApiClient:
             raise SynologyClientError(None, "Synology no devolvió información del archivo.")
         return self._parse_file(files[0], str(PurePosixPath(path).parent))
 
-    async def stream_download(self, path: str) -> AsyncIterator[bytes]:
+    async def stream_download(self, path: str) -> AsyncGenerator[bytes, None]:
         self.validate_remote_path(path)
         api = self._require_api("SYNO.FileStation.Download")
         url = self._api_url(api)
@@ -418,15 +418,20 @@ class SynologyApiClient:
         params: dict[str, str],
         *,
         endpoint_prefix: str,
-    ) -> AsyncIterator[bytes]:
+        http_method: str = "GET",
+    ) -> AsyncGenerator[bytes, None]:
         _, chunks = await self.open_api_stream_at(
             api,
             method,
             params,
             endpoint_prefix=endpoint_prefix,
+            http_method=http_method,
         )
-        async for chunk in chunks:
-            yield chunk
+        try:
+            async for chunk in chunks:
+                yield chunk
+        finally:
+            await chunks.aclose()
 
     async def open_api_stream_at(
         self,
@@ -436,7 +441,8 @@ class SynologyApiClient:
         *,
         endpoint_prefix: str,
         require_image: bool = False,
-    ) -> tuple[str, AsyncIterator[bytes]]:
+        http_method: str = "GET",
+    ) -> tuple[str, AsyncGenerator[bytes, None]]:
         url = self._api_url_at(api, endpoint_prefix)
         values = {
             "api": api.name,
@@ -449,6 +455,7 @@ class SynologyApiClient:
             values,
             headers=self._api_headers(endpoint_prefix),
             require_image=require_image,
+            http_method=http_method,
         )
 
     async def open_photo_thumbnail_stream(
@@ -458,7 +465,7 @@ class SynologyApiClient:
         *,
         size: str,
         team_space: bool,
-    ) -> tuple[str, AsyncIterator[bytes]]:
+    ) -> tuple[str, AsyncGenerator[bytes, None]]:
         space = "t" if team_space else "p"
         url = urljoin(
             self.server_url,
@@ -486,12 +493,14 @@ class SynologyApiClient:
         *,
         headers: dict[str, str],
         require_image: bool,
-    ) -> tuple[str, AsyncIterator[bytes]]:
+        http_method: str = "GET",
+    ) -> tuple[str, AsyncGenerator[bytes, None]]:
         try:
             request = self._require_http().build_request(
-                "GET",
+                http_method,
                 url,
-                params=params,
+                params=params if http_method == "GET" else None,
+                data=params if http_method == "POST" else None,
                 headers=headers,
             )
             response = await self._require_http().send(request, stream=True)
@@ -503,6 +512,7 @@ class SynologyApiClient:
             content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
             if (
                 content_type in {"text/html", "application/json", "text/json"}
+                or content_type in {"application/zip", "application/x-zip-compressed"}
                 or require_image and not content_type.startswith("image/")
             ):
                 await response.aclose()
@@ -512,13 +522,13 @@ class SynologyApiClient:
                     category="unexpected_response",
                 )
 
-            async def chunks() -> AsyncIterator[bytes]:
+            async def chunks() -> AsyncGenerator[bytes, None]:
                 first_chunk = True
                 try:
-                    async for chunk in response.aiter_raw():
+                    async for chunk in response.aiter_bytes():
                         if not chunk:
                             continue
-                        if first_chunk and chunk.lstrip().startswith((b"{", b"<")):
+                        if first_chunk and chunk.lstrip().startswith((b"{", b"<", b"PK\x03\x04")):
                             raise SynologyClientError(
                                 None,
                                 "Synology Photos devolvió un error en vez del archivo original.",

@@ -15,7 +15,7 @@ from app.application.services.synology_connections import (
     SynologyConnectionService,
 )
 from app.config import Settings
-from app.domain.models.photos import Photo, PhotoSpace
+from app.domain.models.photos import Photo, PhotoAlbum, PhotoSpace
 from app.domain.models.synology import (
     DownloadItem,
     DownloadOperation,
@@ -49,8 +49,17 @@ class SynologyDownloadService:
         self.operations: dict[str, DownloadOperation] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._active_operation: str | None = None
+        self._start_lock = asyncio.Lock()
 
     async def start_operation(
+        self, connection_id: str, paths: list[str], *, confirmed: bool
+    ) -> DownloadOperation:
+        if self._start_lock.locked():
+            raise DownloadValidationError("Ya se está preparando una descarga.")
+        async with self._start_lock:
+            return await self._start_file_operation(connection_id, paths, confirmed=confirmed)
+
+    async def _start_file_operation(
         self,
         connection_id: str,
         paths: list[str],
@@ -129,10 +138,21 @@ class SynologyDownloadService:
         return operation
 
     async def start_photo_operation(
+        self, connection_id: str, photos: list[Photo], *, album_id: str, confirmed: bool
+    ) -> DownloadOperation:
+        if self._start_lock.locked():
+            raise DownloadValidationError("Ya se está preparando una descarga.")
+        async with self._start_lock:
+            return await self._start_photo_operation(
+                connection_id, photos, album_id=album_id, confirmed=confirmed
+            )
+
+    async def _start_photo_operation(
         self,
         connection_id: str,
         photos: list[Photo],
         *,
+        album_id: str,
         confirmed: bool,
     ) -> DownloadOperation:
         if not self.settings.manual_confirmation_required or not confirmed:
@@ -156,13 +176,20 @@ class SynologyDownloadService:
             raise DownloadValidationError("Synology Photos no está disponible en esta conexión.")
         if not connection.diagnostic.photos_download_available:
             raise DownloadValidationError(
-                "La descarga de originales de Synology Photos no está validada."
+                "La API de descarga de Synology Photos no está disponible."
             )
+        if connection.active_album_id != album_id:
+            raise DownloadValidationError("El álbum activo cambió; revisa la selección.")
+        album = connection.known_albums.get(album_id)
+        if album is None:
+            raise DownloadValidationError("El álbum no se ha consultado en esta sesión.")
         for photo in photos:
             if connection.known_photos.get(photo.photo_id) != photo:
                 raise DownloadValidationError(
                     "La selección contiene una fotografía que no se ha listado en esta sesión."
                 )
+            if photo.photo_id not in connection.album_photo_ids:
+                raise DownloadValidationError("La fotografía no procede del álbum seleccionado.")
             if (
                 photo.media_type != "photo"
                 or photo.extension not in PHOTO_EXTENSIONS
@@ -183,7 +210,8 @@ class SynologyDownloadService:
         if total_size > self.settings.synology_max_operation_bytes:
             raise DownloadValidationError("La selección supera el límite de 250 MB por operación.")
 
-        connection_root = self._connection_root(connection_id)
+        connection_root = self.photo_download_directory(album)
+        await self._run_blocking(self._ensure_safe_target, connection_root / ".destination")
         await self._run_blocking(self._ensure_safe_directory, connection_root)
         available = (await self._run_blocking(shutil.disk_usage, connection_root)).free
         if total_size > available:
@@ -196,23 +224,30 @@ class SynologyDownloadService:
                     f"Synology Photos/{photo.space.value}/{photo.folder_id}/"
                     f"{photo.name}"
                 ),
-                local_path=str(self._photo_local_path(connection_id, photo)),
+                local_path=str(self.photo_download_path(album, photo)),
                 expected_size=photo.size,
                 source_type="synology_photos",
                 source_id=photo.photo_id,
             )
             for photo in photos
         ]
+        if len({item.local_path.casefold() for item in items}) != len(items):
+            raise DownloadValidationError(
+                "Hay fotografías con el mismo nombre de destino; descárgalas por separado."
+            )
         for item in items:
             destination = Path(item.local_path)
             if await self._run_blocking(destination.exists):
-                raise DownloadValidationError(f"Ya existe {item.local_path}; no se sobrescribió.")
+                item.state = DownloadState.SKIPPED
+                item.error = "El archivo de destino ya existe; se omitió sin sobrescribir."
         operation = DownloadOperation(
             operation_id=operation_id,
             connection_id=connection_id,
             connection_name=connection.diagnostic.name,
             started_at=datetime.now(UTC),
             items=items,
+            album_id=album_id,
+            album_name=album.name,
         )
         self.operations[operation_id] = operation
         self._active_operation = operation_id
@@ -255,6 +290,8 @@ class SynologyDownloadService:
             for item in operation.items:
                 if operation.cancel_requested:
                     raise asyncio.CancelledError
+                if item.state == DownloadState.SKIPPED:
+                    continue
                 operation.current_item = item.remote_path
                 operation.current_bytes = 0
                 operation.current_total = item.expected_size
@@ -269,9 +306,14 @@ class SynologyDownloadService:
                     operation.errors.append(f"{item.remote_path}: {exc}")
             operation.state = (
                 DownloadState.COMPLETED
-                if all(item.state == DownloadState.COMPLETED for item in operation.items)
+                if all(
+                    item.state in {DownloadState.COMPLETED, DownloadState.SKIPPED}
+                    for item in operation.items
+                )
                 else DownloadState.FAILED
             )
+            if all(item.state == DownloadState.SKIPPED for item in operation.items):
+                operation.state = DownloadState.SKIPPED
         except asyncio.CancelledError:
             operation.state = DownloadState.CANCELLED
             for item in operation.items:
@@ -282,9 +324,7 @@ class SynologyDownloadService:
                     DownloadState.VALIDATING,
                 }:
                     item.state = DownloadState.CANCELLED
-                    await self._remove_part(
-                        Path(item.local_path).with_name(Path(item.local_path).name + ".part")
-                    )
+                    item.error = "Descarga cancelada; se conserva cualquier archivo parcial."
             raise
         finally:
             operation.completed_at = datetime.now(UTC)
@@ -315,7 +355,11 @@ class SynologyDownloadService:
                 raise DownloadValidationError(
                     "El tamaño del original difiere del tamaño recibido al listar."
                 )
-            stream = connection.photos_client.stream_original(photo)
+            if operation.album_id is None:
+                raise DownloadValidationError("La operación no tiene un álbum asociado.")
+            stream = connection.photos_client.stream_original(
+                photo, album_id=operation.album_id
+            )
         else:
             fresh_info = await self.connections.get_file_info(
                 operation.connection_id,
@@ -337,26 +381,32 @@ class SynologyDownloadService:
         part = destination.with_name(destination.name + ".part")
         await self._run_blocking(self._ensure_safe_target, destination)
         if await self._run_blocking(destination.exists):
-            raise DownloadValidationError(
-                "Ya existe un archivo local con ese nombre; no se sobrescribió."
-            )
+            item.state = DownloadState.SKIPPED
+            item.error = "El archivo de destino ya existe; se omitió sin sobrescribir."
+            return
         if await self._run_blocking(part.exists):
+            item.partial_path = str(part)
             raise DownloadValidationError(
                 "Ya existe un archivo temporal .part; revísalo antes de reintentar."
             )
         await self._run_blocking(destination.parent.mkdir, parents=True, exist_ok=True)
         await self._run_blocking(self._ensure_safe_target, destination)
         file_handle = await self._run_blocking(part.open, "xb")
+        item.partial_path = str(part)
         digest = hashlib.sha256()
         downloaded = 0
         started = time.monotonic()
         operation.current_item = item.remote_path
-        completed_stream = False
         try:
             async with connection.lock:
                 async for chunk in stream:
                     if operation.cancel_requested:
                         raise asyncio.CancelledError
+                    if downloaded + len(chunk) > item.expected_size:
+                        raise DownloadValidationError(
+                            "La respuesta supera el tamaño esperado del original; "
+                            "se conserva el parcial."
+                        )
                     downloaded += await self._run_blocking(
                         self._write_and_hash,
                         file_handle,
@@ -367,17 +417,17 @@ class SynologyDownloadService:
                     operation.bytes_per_second = downloaded / max(time.monotonic() - started, 0.001)
             await self._run_blocking(file_handle.flush)
             await self._run_blocking(os.fsync, file_handle.fileno())
-            completed_stream = True
         finally:
             item.downloaded_size = downloaded
-            await self._run_blocking(file_handle.close)
-            if not completed_stream:
-                await self._remove_part(part)
+            item.sha256 = digest.hexdigest()
+            try:
+                await stream.aclose()
+            finally:
+                await self._run_blocking(file_handle.close)
 
         item.downloaded_size = downloaded
         item.state = DownloadState.DOWNLOADED
         if downloaded != item.expected_size:
-            await self._remove_part(part)
             raise DownloadValidationError(
                 f"Tamaño descargado incorrecto ({downloaded} de {item.expected_size} bytes)."
             )
@@ -391,32 +441,14 @@ class SynologyDownloadService:
                 item.sha256 = digest.hexdigest()
                 item.integrity_verified = False
                 item.state = DownloadState.COMPLETED
-                try:
-                    await self._remove_part(part)
-                except OSError as exc:
-                    operation.errors.append(
-                        f"{item.remote_path}: descarga completada, pero no se pudo "
-                        f"retirar el temporal .part: {exc}"
-                    )
             raise
         except FileExistsError as exc:
-            await self._remove_part(part)
             raise DownloadValidationError(
                 "Ya existe un archivo local con ese nombre; no se sobrescribió."
             ) from exc
-        except OSError:
-            await self._remove_part(part)
-            raise
         item.sha256 = digest.hexdigest()
         item.integrity_verified = False
         item.state = DownloadState.COMPLETED
-        try:
-            await self._run_blocking(part.unlink)
-        except OSError as exc:
-            operation.errors.append(
-                f"{item.remote_path}: se validó el archivo, pero no se pudo retirar "
-                f"el temporal .part: {exc}"
-            )
         operation.current_bytes = downloaded
         operation.current_total = item.expected_size
         operation.bytes_per_second = downloaded / max(time.monotonic() - started, 0.001)
@@ -439,10 +471,26 @@ class SynologyDownloadService:
     def _connection_root(self, connection_id: str) -> Path:
         if not connection_id.isalnum():
             raise DownloadValidationError("Identificador de conexión no válido.")
+        return self._download_base() / connection_id
+
+    def _download_base(self) -> Path:
         base = self.settings.synology_download_directory
-        if not base.is_absolute():
-            base = Path.cwd() / base
-        return base / connection_id
+        return base if base.is_absolute() else Path.cwd() / base
+
+    @staticmethod
+    def _safe_component(value: str) -> str:
+        value = WINDOWS_INVALID.sub("_", value.replace("/", "_").replace("\\", "_"))
+        value = value.rstrip(". ")
+        if not value or value in {".", ".."} or WINDOWS_RESERVED.match(value):
+            value = "_" + value
+        SynologyDownloadService._validate_windows_component(value)
+        return value
+
+    def photo_download_directory(self, album: PhotoAlbum) -> Path:
+        return self._download_base() / self._safe_component(album.name)
+
+    def photo_download_path(self, album: PhotoAlbum, photo: Photo) -> Path:
+        return self.photo_download_directory(album) / self._safe_component(photo.name)
 
     def _local_path(self, connection_id: str, remote_path: str) -> Path:
         self._validate_remote_file_path(remote_path)
@@ -495,9 +543,9 @@ class SynologyDownloadService:
             raise DownloadValidationError("El destino local no es un directorio.")
 
     def _ensure_safe_target(self, destination: Path) -> None:
-        connection_root = self._connection_root(self._connection_id_from_path(destination))
-        if connection_root.is_symlink():
-            raise DownloadValidationError("La carpeta de conexión es un enlace simbólico.")
+        connection_root = self._download_base()
+        if connection_root.is_symlink() or connection_root.is_junction():
+            raise DownloadValidationError("La carpeta de descargas es un enlace.")
         root_resolved = connection_root.resolve()
         target_resolved = destination.resolve()
         if not target_resolved.is_relative_to(root_resolved):
@@ -506,7 +554,7 @@ class SynologyDownloadService:
             )
         current = destination
         while current != root_resolved and current != current.parent:
-            if current.exists() and current.is_symlink():
+            if current.is_symlink() or current.is_junction():
                 raise DownloadValidationError(
                     "El destino contiene un enlace simbólico que escapa de la carpeta permitida."
                 )
@@ -534,7 +582,10 @@ class SynologyDownloadService:
     @staticmethod
     def _write_report(operation: DownloadOperation, path: Path) -> None:
         connection_root = path.parent.parent
-        if connection_root.is_symlink() or path.parent.is_symlink():
+        if (
+            connection_root.is_symlink() or connection_root.is_junction()
+            or path.parent.is_symlink() or path.parent.is_junction()
+        ):
             raise OSError("La carpeta del informe contiene un enlace simbólico.")
         if not path.parent.resolve().is_relative_to(connection_root.resolve()):
             raise OSError("La carpeta del informe escapa del destino de la conexión.")
@@ -544,6 +595,7 @@ class SynologyDownloadService:
             "started_at": operation.started_at.isoformat(),
             "finished_at": operation.completed_at.isoformat() if operation.completed_at else None,
             "connection_name": operation.connection_name,
+            "album_name": operation.album_name,
             "state": operation.state.value,
             "errors": operation.errors,
             "items": [
@@ -558,20 +610,15 @@ class SynologyDownloadService:
                     "state": item.state.value,
                     "error": item.error,
                     "integrity_verified": item.integrity_verified,
+                    "partial_path": item.partial_path,
                 }
                 for item in operation.items
             ],
         }
         temporary = path.with_suffix(".json.part")
-        temporary.write_text(
-            json.dumps(report, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(temporary, path)
-
-    @staticmethod
-    async def _remove_part(path: Path) -> None:
-        await SynologyDownloadService._run_blocking(path.unlink, missing_ok=True)
+        with temporary.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(report, ensure_ascii=False, indent=2))
+        os.link(temporary, path)
 
     @staticmethod
     async def _run_blocking(function, *args, **kwargs):

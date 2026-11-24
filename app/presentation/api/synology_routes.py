@@ -1,8 +1,10 @@
+import json
 from datetime import UTC, date, datetime, time
 from typing import Annotated, Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 
 from app.application.services.synology_connections import (
     PHOTO_EXTENSIONS,
@@ -47,6 +49,8 @@ async def explorer_page(
     parent_folder_id: int | None = Query(default=None, ge=0),
     folder_name: Annotated[str | None, Query(max_length=255)] = None,
     album_id: Annotated[str | None, Query(max_length=128)] = None,
+    album_name: Annotated[str | None, Query(max_length=120)] = None,
+    album_offset: int = Query(default=0, ge=0, le=2_147_483_647),
     name: Annotated[str | None, Query(max_length=120)] = None,
     extension: Annotated[str | None, Query(max_length=10)] = None,
     media_type: Annotated[str | None, Query(max_length=8)] = None,
@@ -77,6 +81,10 @@ async def explorer_page(
         "space": space,
         "folder_id": folder_id,
         "album_id": album_id,
+        "album_name_filter": album_name or "",
+        "album_offset": album_offset,
+        "album_has_more": False,
+        "selected_album": None,
         "name_filter": name or "",
         "extension_filter": extension or "",
         "media_type_filter": media_type or "",
@@ -127,6 +135,12 @@ async def explorer_page(
                 connection.diagnostic.photos_shared_space_accessible
             ):
                 raise ValueError("El espacio compartido de Synology Photos no está accesible.")
+            if album_id:
+                if selected_space != PhotoSpace.PERSONAL:
+                    raise ValueError("Los álbumes solo están disponibles en el espacio personal.")
+                context["selected_album"] = await manager.get_photo_album(
+                    selected_connection, album_id
+                )
             from_date = _parse_filter_date(date_from, end_of_day=False)
             to_date = _parse_filter_date(date_to, end_of_day=True)
             if from_date and to_date and from_date > to_date:
@@ -142,7 +156,7 @@ async def explorer_page(
             photo_page = await manager.list_photos(
                 selected_connection,
                 selected_space,
-                folder_id=folder_id,
+                folder_id=None if album_id else folder_id,
                 offset=offset,
                 limit=50,
                 criteria=criteria,
@@ -156,26 +170,50 @@ async def explorer_page(
                     f"Carpeta {folder_id}" if folder_id is not None else None
                 ),
             )
-            try:
-                context["photo_folders"], _ = await manager.list_photo_folders(
-                    selected_connection,
-                    selected_space,
-                    folder_id=folder_id,
-                    limit=50,
-                )
-            except SynologyClientError as exc:
-                context["photo_folder_error"] = (
-                    f"La navegación por carpetas no está disponible: {exc}"
-                )
+            if not album_id:
+                try:
+                    context["photo_folders"], _ = await manager.list_photo_folders(
+                        selected_connection,
+                        selected_space,
+                        folder_id=folder_id,
+                        limit=50,
+                    )
+                except SynologyClientError as exc:
+                    context["photo_folder_error"] = (
+                        f"La navegación por carpetas no está disponible: {exc}"
+                    )
             if (
                 selected_space == PhotoSpace.PERSONAL
                 and connection.diagnostic.photos_albums_available
             ):
                 try:
-                    albums, _ = await manager.list_photo_albums(
+                    albums, more = await manager.list_photo_albums(
                         selected_connection,
+                        offset=0 if album_name else album_offset,
                         limit=50,
                     )
+                    if album_name:
+                        page_offset = 50
+                        while more and page_offset < 1000:
+                            batch, more = await manager.list_photo_albums(
+                                selected_connection, offset=page_offset, limit=50
+                            )
+                            albums.extend(batch)
+                            page_offset += 50
+                        albums = [
+                            item for item in albums
+                            if album_name.casefold() in item.name.casefold()
+                        ]
+                        if more:
+                            context["photo_album_error"] = (
+                                "Búsqueda limitada a los primeros 1000 álbumes; usa la paginación."
+                            )
+                    else:
+                        context["album_has_more"] = more
+                    if context["selected_album"] and all(
+                        item.album_id != album_id for item in albums
+                    ):
+                        albums.append(context["selected_album"])
                     context["photo_albums"] = albums
                 except SynologyClientError as exc:
                     context["photo_album_error"] = (
@@ -309,9 +347,19 @@ async def start_download(connection_id: str, request: Request) -> HTMLResponse:
         connection = manager.get_connection(connection_id)
         download_service = request.app.state.synology_downloads
         if source == "photos":
+            album_id = str(form.get("album_id", ""))
+            submitted_ids = json.loads(str(form.get("photo_ids", "[]")))
+            selected = manager.get_selected_photos(connection_id)
+            if (
+                not isinstance(submitted_ids, list)
+                or any(not isinstance(item, str) for item in submitted_ids)
+                or set(submitted_ids) != {photo.photo_id for photo in selected}
+            ):
+                raise DownloadValidationError("La selección cambió; revisa la confirmación.")
             operation = await download_service.start_photo_operation(
                 connection_id,
-                manager.get_selected_photos(connection_id),
+                selected,
+                album_id=album_id,
                 confirmed=str(form.get("confirm_download", "")) == "on",
             )
         else:
@@ -320,13 +368,60 @@ async def start_download(connection_id: str, request: Request) -> HTMLResponse:
                 sorted(connection.selected_paths),
                 confirmed=str(form.get("confirm_download", "")) == "on",
             )
-    except (SynologyClientError, DownloadValidationError) as exc:
+    except (SynologyClientError, ValueError) as exc:
         return render_template(request, "download_error.html", {"error": str(exc)})
     return render_template(
         request,
         "download_status.html",
         _operation_context(operation),
     )
+
+
+@router.post("/api/synology/{connection_id}/photo-download-preview", response_class=HTMLResponse)
+async def photo_download_preview(connection_id: str, request: Request) -> HTMLResponse:
+    await parse_protected_form(request)
+    manager = request.app.state.synology_connections
+    connection = manager.get_connection(connection_id)
+    try:
+        album = connection.known_albums.get(connection.active_album_id or "")
+        photos = manager.get_selected_photos(connection_id)
+        if album is None or not photos:
+            raise DownloadValidationError("Selecciona un álbum y al menos una fotografía.")
+        service = request.app.state.synology_downloads
+        return render_template(
+            request, "photo_download_confirmation.html",
+            {
+                "connection_id": connection_id,
+                "album": album,
+                "photos": photos,
+                "photo_ids": [photo.photo_id for photo in photos],
+                "total_size": sum(photo.size for photo in photos),
+                "destination": service.photo_download_directory(album),
+            },
+        )
+    except (SynologyClientError, DownloadValidationError) as exc:
+        return render_template(request, "download_error.html", {"error": str(exc)})
+
+
+@router.post("/api/synology/{connection_id}/photo-selection-action")
+async def photo_selection_action(connection_id: str, request: Request) -> RedirectResponse:
+    form = await parse_protected_form(request)
+    manager = request.app.state.synology_connections
+    action = str(form.get("action", ""))
+    if action not in {"visible", "clear"}:
+        raise HTTPException(status_code=422, detail="Acción de selección no permitida.")
+    try:
+        manager.select_visible_photos(connection_id, clear=action == "clear")
+    except SynologyClientError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    connection = manager.get_connection(connection_id)
+    query = {"connection_id": connection_id, "source": "photos"}
+    if connection.active_album_id:
+        query["album_id"] = connection.active_album_id
+    offset = str(form.get("offset", "0"))
+    if offset.isdecimal():
+        query["offset"] = offset
+    return RedirectResponse("/explorer?" + urlencode(query), status_code=303)
 
 
 @router.get(

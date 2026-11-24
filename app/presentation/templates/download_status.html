@@ -13,6 +13,7 @@
     </span>
   </div>
   <p class="muted">Conexión: {{ operation.connection_name }}</p>
+  {% if operation.album_name %}<p>Álbum: {{ operation.album_name }}</p>{% endif %}
   <p>Archivo actual: <strong>{{ operation.current_item or "Preparando…" }}</strong></p>
   <div class="progress" role="progressbar" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100">
     <div class="progress-bar" style="width: {{ percent }}%">{{ percent }}%</div>
@@ -36,15 +37,19 @@
   {% if operation.report_path %}
     <p class="field-help mt-3">Informe JSON: {{ operation.report_path }}</p>
   {% endif %}
-  {% if operation.state == "COMPLETED" %}
     <ul class="download-items">
       {% for item in operation.items %}
         <li>
-          <strong>{{ item.remote_path }}</strong> — {{ item.downloaded_size }} bytes; SHA-256 local:
-          <code>{{ item.sha256 }}</code>. Tamaño comprobado. Integridad remota:
-          {{ "verificada" if item.integrity_verified else "no verificada (Synology no proporcionó hash comparable)" }}.
+          <strong>{{ item.remote_path }}</strong> — {{ item.state.value }};
+          {{ item.downloaded_size }} / {{ item.expected_size }} bytes.
+          <br>Destino: <code>{{ item.local_path }}</code>
+          {% if item.partial_path %}<br>Parcial conservado: <code>{{ item.partial_path }}</code>{% endif %}
+          {% if item.error %}<br><span class="text-danger">{{ item.error }}</span>{% endif %}
+          {% if item.sha256 %}
+            <br>SHA-256 local: <code>{{ item.sha256 }}</code>.
+            Integridad remota no verificada (sin hash de origen comparable).
+          {% endif %}
         </li>
       {% endfor %}
     </ul>
-  {% endif %}
 </section>

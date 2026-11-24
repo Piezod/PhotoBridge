@@ -62,17 +62,25 @@ Si el puerto 8000 ya está ocupado, usa temporalmente el puerto 8001:
    50 elementos y no realiza escaneos recursivos. Sus filtros de nombre,
    extensión y fecha se aplican en la página consultada, no recorren toda la
    biblioteca.
-5. Selecciona fotografías y confirma explícitamente la descarga. El backend
+5. En Photos, busca y selecciona un álbum por su identificador. La búsqueda
+   consulta hasta 1000 álbumes; también puedes paginar el selector. Selecciona
+   fotografías individuales o las visibles (máximo 10), o limpia la selección.
+   Pulsa **Revisar fotografías seleccionadas** para ver nombres, tamaño y
+   destino; después confirma y pulsa **Descargar fotografías seleccionadas**.
+   No se descargan originales al navegar ni se implementa descarga de vídeos.
+   El backend
    aplica el modo de prueba obligatorio: máximo 10 fotografías, 250 MB
    (250.000.000 bytes) por operación y una descarga simultánea.
 
 Las descargas File Station se escriben por streaming en
 `data/downloads/<id_conexion>/<ruta_remota>/`. Synology Photos no expone aquí
-una ruta física inequívoca, por lo que su staging usa
-`data/downloads/<id_conexion>/SynologyPhotos/<espacio>/<id_carpeta>/<nombre>`.
+una ruta física inequívoca; sus álbumes virtuales se descargan en
+`data/downloads/<nombre_album>/<nombre_archivo>`, con nombres saneados.
 El informe JSON de cada operación se guarda bajo
 `data/downloads/<id_conexion>/.reports/`. Se conservan las descargas
-completadas; no se sobrescriben archivos existentes. El SHA-256 calculado
+completadas y todos los `.part`, incluso tras un error o cancelación; no se
+eliminan temporales automáticamente. Los destinos existentes se omiten y se
+notifican; no se sobrescriben. El SHA-256 calculado
 identifica los bytes locales, pero no demuestra igualdad criptográfica con el
 origen porque no se obtiene un hash remoto comparable.
 
@@ -89,12 +97,12 @@ Las miniaturas se solicitan al NAS, no se generan descargando originales.
 **Limitación importante:** Synology no publica una guía oficial de API web para
 Synology Photos. Estas interfaces son internas/no documentadas y se apoyan en
 referencias comunitarias; pueden cambiar entre versiones DSM. Descubrir un
-nombre con `SYNO.API.Info` no demuestra compatibilidad de sus métodos. No se
-ha conectado PhotoBridge a un NAS para esta implementación ni se considera
-Synology Photos validado manualmente. Para probarlo, conecta manualmente y
-verifica primero el diagnóstico de los espacios, álbumes, miniaturas y
-descarga; después navega una página y descarga una sola fotografía de prueba.
-Verifica el archivo, su tamaño y el informe local.
+nombre con `SYNO.API.Info` no demuestra compatibilidad de sus métodos.
+El usuario confirmó conexión, fotografías reales, miniaturas y apertura XL.
+Álbumes, filtros y descarga original siguen pendientes de validación manual.
+El contrato de descarga se investigó en la interfaz oficial, sin transferir
+originales. La primera descarga la realiza el usuario: verificar archivo,
+tamaño, destino y el informe local.
 
 El usuario sí confirmó previamente una conexión QuickConnect real con
 autenticación DSM, descubrimiento de APIs File Station, permiso de lectura y

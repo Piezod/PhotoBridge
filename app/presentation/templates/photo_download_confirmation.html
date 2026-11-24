@@ -1,0 +1,26 @@
+<section class="panel-card mt-3">
+  <h2>Confirmar descarga de originales</h2>
+  <p>Álbum: <strong>{{ album.name }}</strong></p>
+  <p>{{ photos|length }} fotografías · {{ format_size(total_size) }} estimados</p>
+  <p>Directorio local: <code>{{ destination }}</code></p>
+  <ul>
+    {% for photo in photos %}
+      <li>{{ photo.name }} · {{ format_size(photo.size) }}</li>
+    {% endfor %}
+  </ul>
+  <p class="field-help">Sin conversión de formatos. Los archivos existentes se omiten.
+    Cualquier parcial se conserva para revisión manual. El SHA-256 es solo local.</p>
+  <form method="post" action="/api/synology/{{ connection_id }}/downloads"
+        hx-post="/api/synology/{{ connection_id }}/downloads"
+        hx-target="#download-result" hx-swap="innerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="source" value="photos">
+    <input type="hidden" name="album_id" value="{{ album.album_id }}">
+    <input type="hidden" name="photo_ids" value="{{ photo_ids|tojson|forceescape }}">
+    <label class="confirm-check">
+      <input type="checkbox" name="confirm_download" required>
+      Confirmo la descarga local de estas fotografías originales.
+    </label>
+    <button class="btn btn-primary" type="submit">Descargar fotografías seleccionadas</button>
+  </form>
+</section>

@@ -1,5 +1,5 @@
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
@@ -71,11 +71,11 @@ class SynologyPhotosClient:
             params: dict[str, str] = {
                 "offset": str(offset),
                 "limit": str(limit),
-                "sort_by": "takentime",
-                "sort_direction": "desc",
+                "sort_by": json.dumps("takentime"),
+                "sort_direction": json.dumps("desc"),
                 "additional": additional,
             }
-            if folder_id is not None:
+            if folder_id is not None and album_id is None:
                 params["folder_id"] = str(folder_id)
             if album_id is not None:
                 params["album_id"] = str(album_id)
@@ -183,7 +183,7 @@ class SynologyPhotosClient:
         photo: Photo,
         *,
         size: str = "sm",
-    ) -> tuple[str, AsyncIterator[bytes]]:
+    ) -> tuple[str, AsyncGenerator[bytes, None]]:
         if size not in {"sm", "xl"}:
             raise ValueError("El tamaño de miniatura no está permitido.")
         self._require_api(self._api_name(photo.space, "Thumbnail"))
@@ -200,14 +200,44 @@ class SynologyPhotosClient:
             team_space=photo.space == PhotoSpace.SHARED,
         )
 
-    def stream_original(self, photo: Photo) -> AsyncIterator[bytes]:
+    def stream_original(
+        self, photo: Photo, *, album_id: str
+    ) -> AsyncGenerator[bytes, None]:
         api = self._require_api(self._api_name(photo.space, "Download"))
-        params = {"unit_id": json.dumps([photo.item_id])}
+        params = {
+            "item_id": json.dumps([photo.item_id]),
+            "album_id": album_id,
+            "force_download": "true",
+            "download_type": "source",
+        }
         return self.client.stream_api_at(
             api,
             "download",
             params,
             endpoint_prefix=PHOTO_API_PREFIX,
+            http_method="POST",
+        )
+
+    async def get_album(self, album_id: str) -> PhotoAlbum:
+        if not album_id.isdecimal():
+            raise ValueError("El identificador del álbum no es válido.")
+        data = await self._request(
+            "SYNO.Foto.Browse.Album", "get", {"id": json.dumps([int(album_id)])}
+        )
+        rows = data.get("list")
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise SynologyClientError(
+                None, "El álbum no está disponible para esta cuenta.", category="album_unavailable"
+            )
+        row = rows[0]
+        if str(row.get("id")) != album_id or not isinstance(row.get("name"), str):
+            raise SynologyClientError(None, "Synology devolvió información de otro álbum.")
+        return PhotoAlbum(
+            album_id=album_id,
+            name=row["name"],
+            item_count=int(row.get("item_count", 0)),
+            owner_user_id=self._optional_int(row.get("owner_user_id")),
+            created_at=self._timestamp(row.get("create_time")),
         )
 
     async def _request(

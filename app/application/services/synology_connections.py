@@ -3,7 +3,7 @@ import hashlib
 import ipaddress
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import unquote, urlsplit, urlunsplit
 from uuid import uuid4
 
@@ -68,6 +68,10 @@ class SynologyConnection:
     photos_client: SynologyPhotosClient | None
     known_photos: dict[str, Photo]
     selected_photo_ids: set[str]
+    known_albums: dict[str, PhotoAlbum] = field(default_factory=dict)
+    active_album_id: str | None = None
+    album_photo_ids: set[str] = field(default_factory=set)
+    visible_photo_ids: set[str] = field(default_factory=set)
 
 
 class SynologyConnectionService:
@@ -293,7 +297,10 @@ class SynologyConnectionService:
                 photos_shared_space_accessible=photos_shared_accessible,
                 photos_albums_available=photos_albums_available,
                 photos_thumbnail_available=photos_thumbnail_available,
-                photos_download_available=False,
+                photos_download_available=(
+                    photos_personal_accessible
+                    and photos_client.supports("SYNO.Foto.Download")
+                ),
                 photos_message=photos_message,
             )
             self.connections[diagnostic.connection_id] = SynologyConnection(
@@ -404,6 +411,14 @@ class SynologyConnectionService:
                 limit=limit,
                 criteria=criteria,
             )
+        album_id = str(criteria.album_id) if criteria and criteria.album_id is not None else None
+        if connection.active_album_id != album_id:
+            connection.selected_photo_ids.clear()
+            connection.album_photo_ids.clear()
+        connection.active_album_id = album_id
+        connection.visible_photo_ids = {photo.photo_id for photo in page.items}
+        if album_id is not None:
+            connection.album_photo_ids.update(connection.visible_photo_ids)
         connection.known_photos.update({photo.photo_id: photo for photo in page.items})
         return page
 
@@ -442,7 +457,20 @@ class SynologyConnectionService:
                 None, "Synology Photos no está disponible.", category="api_unavailable"
             )
         async with connection.lock:
-            return await connection.photos_client.list_albums(offset=offset, limit=limit)
+            albums, has_more = await connection.photos_client.list_albums(
+                offset=offset, limit=limit
+            )
+        connection.known_albums.update({album.album_id: album for album in albums})
+        return albums, has_more
+
+    async def get_photo_album(self, connection_id: str, album_id: str) -> PhotoAlbum:
+        connection = self.get_connection(connection_id)
+        if connection.photos_client is None:
+            raise SynologyClientError(None, "Synology Photos no está disponible.")
+        async with connection.lock:
+            album = await connection.photos_client.get_album(album_id)
+        connection.known_albums[album.album_id] = album
+        return album
 
     def update_photo_selection(
         self,
@@ -462,7 +490,7 @@ class SynologyConnectionService:
         if selected and not connection.diagnostic.photos_download_available:
             raise SynologyClientError(
                 None,
-                "La descarga de originales de Synology Photos no está validada.",
+                "La API de descarga de Synology Photos no está disponible.",
                 category="download_unavailable",
             )
         if photo.media_type != "photo" or photo.extension not in PHOTO_EXTENSIONS:
@@ -472,6 +500,14 @@ class SynologyConnectionService:
                 category="invalid_selection",
             )
         if selected:
+            if (
+                connection.active_album_id is None
+                or photo_id not in connection.album_photo_ids
+            ):
+                raise SynologyClientError(
+                    None, "Selecciona una fotografía del álbum activo.",
+                    category="invalid_selection",
+                )
             candidate = connection.selected_photo_ids | {photo_id}
             total = sum(
                 connection.known_photos[item].size
@@ -493,6 +529,35 @@ class SynologyConnectionService:
             connection.selected_photo_ids = candidate
         else:
             connection.selected_photo_ids.discard(photo_id)
+        return self.photo_selection_summary(connection_id)
+
+    def select_visible_photos(
+        self, connection_id: str, *, clear: bool = False
+    ) -> tuple[int, int]:
+        connection = self.get_connection(connection_id)
+        if clear:
+            connection.selected_photo_ids.clear()
+            return self.photo_selection_summary(connection_id)
+        if (
+            connection.active_album_id is None
+            or not connection.diagnostic.photos_download_available
+        ):
+            raise SynologyClientError(None, "Selecciona un álbum descargable.")
+        candidate = connection.selected_photo_ids | {
+            photo_id for photo_id in connection.visible_photo_ids
+            if (photo := connection.known_photos[photo_id]).media_type == "photo"
+            and photo.extension in PHOTO_EXTENSIONS
+        }
+        total = sum(connection.known_photos[key].size for key in candidate)
+        if (
+            len(candidate) > self.settings.synology_max_photos_per_operation
+            or total > self.settings.synology_max_operation_bytes
+        ):
+            raise SynologyClientError(
+                None, "La selección completa supera el límite de 10 fotografías o 250 MB.",
+                category="test_limit",
+            )
+        connection.selected_photo_ids = candidate
         return self.photo_selection_summary(connection_id)
 
     def photo_selection_summary(self, connection_id: str) -> tuple[int, int]:

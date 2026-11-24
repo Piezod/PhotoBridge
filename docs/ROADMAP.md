@@ -91,9 +91,8 @@ validación de integración.
 - [x] [Implementado] PB-002-FIX-004: llamada de miniatura compatible con la
   firma del cliente, manteniendo su validación interna `require_image=True`.
   Fallos de miniaturas/álbumes se informan sin invalidar otras capacidades.
-- [ ] [Validado manualmente] Repetir la conexión tras el HTTP 500 comunicado
-  por el usuario en PB-002-FIX-003; corrección PB-002-FIX-004 pendiente de
-  confirmación, sin pruebas automatizadas.
+- [x] [Validado manualmente] PB-002-FIX-005: el usuario confirmó conexión
+  Synology Photos, fotografías reales, miniaturas y apertura de imagen XL.
 - [x] [Implementado] Precarga local configurable del nombre, URL HTTPS y
   usuario DSM del formulario; contraseña vacía y conexión manual.
 - [ ] [Validado manualmente] Confirmar la precarga solicitada el 2026-11-24;
@@ -105,17 +104,34 @@ validación de integración.
 - [ ] [Pendiente] La implementación de PB-002-FIX-003 no tiene comprobaciones
   automatizadas registradas; por metodología, no se crearon ni ejecutaron tests,
   linters o validaciones funcionales.
-- [ ] [Validado manualmente] El usuario debe confirmar biblioteca, espacios,
-  carpetas/álbumes, filtros y miniaturas desde PhotoBridge. La observación de
-  tráfico DSM no valida la aplicación.
+- [x] [Implementado] PB-002-FIX-005: buscador y selector de álbumes por ID,
+  contenido paginado, selección individual/visible, limpieza de selección y
+  confirmación detallada previa a descargar originales mediante HTTP.
+- [x] [Implementado] Originales por álbum en `data/downloads/<álbum>/<archivo>`,
+  streaming, SHA-256 local, límites backend, omisión de destinos existentes y
+  conservación de parciales e informes sin eliminación automática.
+- [x] [Validado manualmente] PB-002-CLOSE-001 — 2026-11-24: el usuario confirmó
+  la descarga individual de una fotografía desde PhotoBridge y la presencia del
+  archivo en su ordenador. No confirma integridad binaria ni igualdad con el
+  original remoto.
+- [x] [Implementado] Álbum `Test` registrado como entorno controlado para
+  futuras validaciones manuales de migración, sin modificarlo ni eliminarlo.
+- [ ] [Validado manualmente] Integridad binaria, descargas múltiples, álbumes,
+  filtros, límites, cancelación y conservación de parciales siguen pendientes
+  de confirmación expresa. Espacio compartido y vídeos no se consideran validados.
 - [ ] [Bloqueado] `SYNO.Foto.*` y `SYNO.FotoTeam.*` son interfaces internas,
-  sin compatibilidad garantizada. El contrato de descarga original no se
-  investigó ni se inició ninguna descarga; no se declara habilitado.
+  sin compatibilidad garantizada. El contrato de originales se investigó en el
+  código de la interfaz oficial, sin comprobar una respuesta binaria ni ejecutar
+  descargas automatizadas desde PhotoBridge. La confirmación de una descarga
+  individual no garantiza integridad ni compatibilidad de otras operaciones.
 
 ## Fase 2 — Amazon Photos: puerta de viabilidad
 
-- [ ] [Bloqueado] No iniciar hasta que el usuario valide la fase 1 y autorice
-  expresamente esta fase.
+- [x] [Implementado] PB-002-CLOSE-001 — 2026-11-24: fase 2 preparada
+  documentalmente para una futura autorización; no iniciada. Se conserva
+  `Test` como entorno de validación manual y NON-DESTRUCTIVE MIGRATION POLICY.
+- [ ] [Bloqueado] Esperar autorización expresa del usuario antes de investigar
+  o implementar Amazon Photos. No se declara validada íntegramente la fase 1.
 - [ ] [Pendiente] Investigar viabilidad y condiciones mediante mecanismos
   oficiales; no asumir API pública general ni usar endpoints privados.
 - [ ] [Pendiente] Evaluar navegador oficial visible con login manual y perfil

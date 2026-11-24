@@ -448,3 +448,78 @@ ramas, commits ni push; mantener **TOOLS FIRST, AI SECOND**.
   No se crearon ni ejecutaron pruebas, validadores o conexiones al NAS.
 - **Reinicio:** Uvicorn informó arranque completo en `127.0.0.1:8002`;
   no se realizaron pruebas HTTP.
+
+## Registro PB-002-FIX-005 — 2026-11-24
+
+- **Validado manualmente por el usuario:** conexión con Synology Photos,
+  visualización de fotografías reales, miniaturas y apertura de imagen XL.
+  No se extiende esta confirmación a álbumes, vídeos, permisos compartidos,
+  filtros ni descarga de originales.
+- **Investigación de lectura mediante Chrome DevTools MCP:** consultados
+  `SYNO.Foto.Browse.Album.list`, `Browse.Album.get` (ID en array JSON) y
+  `Browse.Item.list` por `album_id`. El álbum controlado devolvió un elemento
+  de tipo fotografía. Se verificó la serialización JSON de cadenas/listas en
+  los parámetros de lectura; no se usan nombres como identificadores.
+- **Contrato de originales:** inspeccionado el código servido por la interfaz
+  oficial. Esta construye POST `SYNO.Foto.Download.download` con `item_id`
+  como array JSON, `album_id`, `force_download=true`, `download_type=source`.
+  No es la miniatura XL. La descarga múltiple y la descarga de álbum completo
+  pueden producir ZIP; PhotoBridge solicita solo un original por llamada.
+  No se verificó una respuesta binaria original ni se realizaron descargas
+  desde PhotoBridge. No se presenta la investigación como validación funcional.
+- **Implementado:** búsqueda de nombres en hasta 1000 álbumes paginados, aviso
+  explícito si se alcanza ese límite y navegación de álbumes por páginas de
+  50. Selector por ID, cantidad reportada, contenido paginado, miniaturas,
+  checkbox individual, seleccionar fotografías visibles y limpiar selección.
+  Al cambiar de álbum se limpia la selección anterior.
+- **Implementado:** previsualización de la operación con álbum, nombres,
+  cantidad, tamaño estimado y destino; segundo formulario con confirmación
+  explícita. Backend restringido a fotografías conocidas del álbum activo,
+  máximo 10/250 MB y una operación secuencial, con protección CSRF.
+- **Destino configurable:** `data/downloads/<nombre_album>/<nombre_archivo>`.
+  Se sanea cada componente Windows, se bloquean traversal y enlaces, no se
+  sobrescriben destinos y se informa de los archivos omitidos.
+  Álbumes con nombres iguales o nombres que saneen al mismo destino pueden
+  compartir carpeta; las colisiones de archivos se omiten, nunca se reemplazan.
+- **Política no destructiva:** no se elimina ningún parcial, tampoco ante
+  cancelación o tamaño incorrecto. Al completar se publica un enlace local sin
+  sobrescritura y se conserva `.part`; puede representar los mismos bytes por
+  enlace duro. Informes JSON creados sin reemplazar ni borrar su temporal.
+  Esta conservación también se aplica al servicio compartido de File Station.
+- **Estado visible:** esperado/descargado, progreso, estado por archivo,
+  destino, parcial y motivo de error. SHA-256 local, sin afirmar igualdad
+  criptográfica con el NAS. No se implementan vídeos ni otros proveedores.
+- **Documentación:** actualizados ROADMAP, este registro, API Photos,
+  arquitectura y ADR 0004; README refleja el nuevo flujo.
+- **Pendiente de validación manual:** el usuario realizará la primera descarga
+  desde PhotoBridge y confirmará archivo original, tamaño, nombre, ruta y
+  conservación de parciales. No se crearon ni ejecutaron tests, Ruff, Pylance,
+  linters, comprobaciones automatizadas ni pruebas funcionales/HTTP de
+  PhotoBridge. Sin ramas, commits, push ni acciones destructivas.
+- **Arranque:** PhotoBridge iniciado en `http://127.0.0.1:8000`;
+  Uvicorn informó arranque completo. No se hicieron solicitudes HTTP.
+
+## Registro PB-002-CLOSE-001 — 2026-11-24
+
+- **Validado manualmente por el usuario:** descarga individual de una
+  fotografía desde PhotoBridge y presencia del archivo en su ordenador.
+  La confirmación no acredita integridad binaria, igualdad con el original
+  remoto, comparación de hashes, tamaño, EXIF ni otras capacidades.
+- **Pendiente:** descargas múltiples y cualquier funcionalidad que el usuario
+  no haya confirmado expresamente. Se mantienen las validaciones previas de
+  conexión, fotografías, miniaturas y apertura XL, sin ampliar su alcance.
+- **Entorno de validación:** el álbum `Test`, creado y gestionado manualmente
+  por el usuario, queda registrado para futuras validaciones manuales de
+  migración. No se afirma que esta descarga procediera de ese álbum, pues la
+  confirmación recibida no lo especifica.
+- **Fase 2 — Amazon Photos:** preparada documentalmente, no iniciada.
+  Investigar viabilidad mediante mecanismos oficiales y desarrollar únicamente
+  cuando el usuario lo autorice expresamente. No se da por validada toda la
+  fase 1 ni se implementan migraciones en esta tarea.
+- **NON-DESTRUCTIVE MIGRATION POLICY:** originales, álbumes, archivos y
+  temporales permanecen intactos; sin eliminación, movimientos destructivos,
+  sobrescrituras ni limpiezas automáticas.
+- **Alcance documental:** actualizados únicamente ROADMAP y este registro.
+  Sin cambios de código, eliminación de archivos, tests, comprobaciones,
+  reinicio de aplicación, ramas, commits ni push. Se espera autorización
+  para comenzar la fase 2.

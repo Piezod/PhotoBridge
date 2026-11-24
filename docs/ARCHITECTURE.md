@@ -64,7 +64,7 @@ usuario.
 Cuando está disponible, el explorador usa Synology Photos como vista
 preferente; File Station permanece seleccionable como vista complementaria.
 El adaptador separado `app/infrastructure/synology/photos.py` descubre las API
-mediante `SYNO.API.Info` en `/photo/webapi/query.cgi` y usa las versiones y
+mediante `SYNO.API.Info` en `/webapi/entry.cgi` y usa las versiones y
 rutas anunciadas. Comprueba acceso personal y compartido mediante llamadas de
 listado acotadas; lista de forma paginada (máximo 50) y no recorre la
 biblioteca recursivamente. Los álbumes se consultan solo en el espacio personal.
@@ -86,9 +86,12 @@ el servicio de descarga existente: confirmación manual, hasta 10 fotografías,
 local, cancelación y JSON local. No se afirma verificación de integridad remota
 sin hash remoto comparable.
 
-Un ID Photos no se interpreta como una ruta física de File Station. Mientras
-no haya una resolución inequívoca, los originales Photos se guardan bajo
-`data/downloads/<id_conexion>/SynologyPhotos/<espacio>/<id_carpeta>/`.
+Un ID Photos no se interpreta como una ruta física de File Station ni un
+álbum como carpeta física. Los álbumes se consultan por ID y sus originales
+individuales se guardan bajo `data/downloads/<nombre_album>/<nombre_archivo>`,
+con nombres saneados. La búsqueda recorre solo metadatos de hasta 1000 álbumes
+en páginas acotadas; no recorre las fotografías para buscar un nombre de álbum.
+La selección queda asociada al álbum activo y se limpia al cambiarlo.
 Los filtros de nombre, extensión y fecha se aplican sobre cada página
 solicitada; no hacen una búsqueda global ni provocan escaneos. La fecha se
 toma del campo temporal de Synology Photos, sin sustituirla por la fecha de
@@ -104,14 +107,17 @@ modificación. Véase [ADR 0004](adr/0004-synology-photos-adapter.md).
    streaming a un archivo `.part`, actualizando el progreso y calculando
    SHA-256 sin cargar el archivo completo en memoria.
 4. Comprueba el tamaño descargado y publica el archivo sin sobrescribir un
-   destino existente. Los errores y cancelaciones limpian el temporal cuando
-   es seguro hacerlo.
+   destino existente. Los errores y cancelaciones conservan el temporal y
+   muestran su ubicación. Los `.part` también se conservan al completar:
+   la publicación usa un enlace duro sin sobrescritura, no una eliminación.
 5. Escribe un informe JSON local. El hash local no se considera prueba de
    integridad remota sin un hash de origen comparable.
 
 La ubicación predeterminada es `data/downloads/<id_conexion>/<ruta_remota>/`;
-los informes se guardan en la subcarpeta `.reports`. Los nombres incompatibles
-con Windows, traversal y enlaces simbólicos en rutas de destino se rechazan.
+los informes se guardan en la subcarpeta `.reports`. Photos usa la carpeta
+del álbum bajo la misma raíz configurable. Los nombres incompatibles de Photos
+se sanean y las colisiones se omiten; traversal y enlaces en destinos se bloquean.
+No se eliminan parciales de archivos ni de informes automáticamente.
 Los archivos remotos nunca se modifican ni eliminan. La confirmación CSRF se
 valida en las operaciones POST.
 
@@ -124,17 +130,17 @@ valida en las operaciones POST.
   envían solo tras descubrir las API requeridas. El usuario confirmó una
   conexión real, autenticación, File Station, APIs de descarga/miniaturas y
   permisos de lectura (3515 ms). Esto no valida una descarga real ni
-  Synology Photos.
+  la descarga de originales Photos.
 - La autenticación MFA requiere código introducido manualmente. No se elude
   MFA ni CAPTCHA.
 - La sesión y el estado de descarga no sobreviven al reinicio. No hay cola,
   reintentos automáticos ni recuperación persistente en esta fase.
 - No se declara verificación criptográfica contra el NAS si no hay hash remoto
   comparable.
-- Synology Photos usa contratos internos/no documentados y continúa pendiente
-  de prueba manual en el NAS. Miniaturas, búsquedas, álbumes, permisos de
-  espacios y descargas pueden variar según versión; no se extrapola la
-  validación de File Station a Photos.
+- Synology Photos usa contratos internos/no documentados. El usuario confirmó
+  conexión, fotografías, miniaturas y apertura XL desde PhotoBridge.
+  Álbumes, búsqueda, permisos compartidos, vídeos y descargas originales
+  continúan pendientes; no se extiende esa confirmación a otros dispositivos.
 - Amazon Photos, sincronización, borrado remoto y migración quedan fuera del
   alcance actual.
 

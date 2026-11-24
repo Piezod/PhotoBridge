@@ -1,6 +1,7 @@
 # ADR 0004: Synology Photos como explorador preferente
 
-- Estado: aceptada; validación manual de Synology Photos pendiente.
+- Estado: aceptada; conexión/fotos/miniaturas/XL confirmadas por el usuario;
+  álbumes y originales pendientes de validación manual.
 - Fecha: 2026-11-24.
 
 ## Contexto
@@ -36,16 +37,20 @@ DSM no está garantizada.
   mediante su API dinámica. La sesión, cookie `id` y `X-Syno-Token` permanecen
   en el backend. Las miniaturas se sirven mediante PhotoBridge; no se envían
   SID ni cookies al navegador. No se afirma que `X-Syno-Hash` sea necesario.
-- `SYNO.Foto.Download` se anuncia en algunos manifiestos, pero su contrato no
-  ha sido investigado ni se inició una descarga; no se declara habilitado ni
-  validado en PhotoBridge.
+- `SYNO.Foto.Download.download` se implementa para álbumes personales usando
+  el formulario POST construido por la interfaz oficial: `item_id` array,
+  `album_id`, `force_download=true`, `download_type=source`. La disponibilidad
+  de API permite que el usuario valide la primera transferencia; no se considera
+  una descarga validada ni se confunde con miniatura XL.
 - Descargar originales en streaming con el servicio existente, staging `.part`,
   SHA-256 local, validación de tamaño informado por la biblioteca, confirmación
   manual, límites del modo prueba e informe JSON. El hash local no demuestra
   igualdad criptográfica remota.
-- No inferir una ruta File Station a partir del ID de Synology Photos. El
-  staging de Photos usa `SynologyPhotos/<espacio>/<id_carpeta>/<nombre>` hasta
-  que exista una resolución física inequívoca.
+- No inferir rutas File Station ni carpetas físicas a partir de IDs Photos
+  o álbumes virtuales. El destino local de álbumes usa
+  `<raíz_configurada>/<nombre_album_saneado>/<nombre_archivo_saneado>`.
+  Colisiones se omiten, nunca se sobrescriben. Se conservan todos los parciales,
+  incluso al completar, sin limpiezas automáticas.
 - Mantener interfaces HTTP y plantillas fuera del adaptador y los servicios
   de aplicación, siguiendo **TOOLS FIRST, AI SECOND**. No añadir LLM, MCP,
   skills ni Copilot SDK.
@@ -79,8 +84,9 @@ DSM no está garantizada.
   sin `cache_key` o con miniatura no disponible conserva un icono genérico.
 - Las respuestas de API pueden cambiar entre versiones DSM. Los contratos
   simulados prueban el comportamiento implementado, no compatibilidad real.
-- Las APIs internas de biblioteca y miniaturas fueron observadas en DSM real,
-  pero el conector, los permisos, carpetas/álbumes y miniaturas de PhotoBridge
-  siguen pendientes de validación manual. No se descargaron originales.
+- El usuario confirmó conexión, fotografías reales, miniaturas y apertura XL
+  desde PhotoBridge. Las demás capacidades, incluidos álbumes, descarga
+  original y recuperación de parciales, siguen pendientes. La investigación
+  de originales se apoya en código de la interfaz, sin transferencia binaria.
 - La observación detallada de endpoints y payloads anonimizados se conserva en
   [`SYNOLOGY-PHOTOS-API.md`](../SYNOLOGY-PHOTOS-API.md).
